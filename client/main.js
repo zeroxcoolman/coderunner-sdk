@@ -8,7 +8,10 @@ let discordSdk;
     // Dynamically import only if available (installed via npm)
     const mod = await import('@discord/embedded-app-sdk');
     discordSdk = new mod.DiscordSDK(import.meta.env.VITE_DISCORD_CLIENT_ID || '');
+    console.log("initializing discord sdk");
     await discordSdk.ready();
+    console.log("successfully intialized discord sdk");
+    console.log("Hello World!");
     // We can expand with authorization if needed:
     // const { code } = await discordSdk.commands.authorize({ client_id: import.meta.env.VITE_DISCORD_CLIENT_ID, response_type: 'code', scope: ['identify'] });
   } catch (e) {
