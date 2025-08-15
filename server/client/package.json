@@ -9,7 +9,7 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
-    "discord-sdk": "^1.0.3",
+    "discord-sdk": "github:discord/discord-sdk",
     "monaco-editor": "^0.49.0"
   },
   "devDependencies": {
