@@ -2,6 +2,7 @@
 // Later we can swap textarea for Monaco/CodeMirror and wire full Discord SDK flows.
 
 // Attempt to initialize Discord Embedded App SDK (non-fatal if not present in plain web dev)
+console.log("Reached Client/main.js!");
 let discordSdk;
 (async () => {
   try {
