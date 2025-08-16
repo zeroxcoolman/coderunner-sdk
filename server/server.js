@@ -151,16 +151,37 @@ app.get('/api/files', async (req, res) => {
 app.get('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
+    
+    // Enhanced validation
     if (!path) {
+      console.log('File request with missing path parameter');
       return res.status(400).json({ error: 'Path parameter required' });
+    }
+    
+    if (path === 'null' || path === 'undefined') {
+      console.log(`File request with invalid path: "${path}"`);
+      return res.status(400).json({ error: `Invalid path: ${path}` });
+    }
+    
+    if (typeof path !== 'string') {
+      console.log(`File request with non-string path:`, typeof path, path);
+      return res.status(400).json({ error: 'Path must be a string' });
+    }
+    
+    if (path.trim() === '') {
+      console.log('File request with empty path');
+      return res.status(400).json({ error: 'Path cannot be empty' });
     }
     
     // Security: prevent path traversal
     if (path.includes('..') || path.includes('/') || path.includes('\\')) {
+      console.log(`File request with invalid characters in path: "${path}"`);
       return res.status(400).json({ error: 'Invalid file path' });
     }
     
     const filePath = join(USER_FILES, path);
+    console.log(`Reading file: ${filePath}`);
+    
     const content = await fs.readFile(filePath, 'utf8');
     res.send(content);
   } catch (err) {
@@ -205,8 +226,26 @@ app.post('/api/file', async (req, res) => {
 app.put('/api/file', async (req, res) => {
   try {
     const { path, content } = req.body;
+    
+    // Enhanced validation
     if (!path) {
+      console.log('File update with missing path');
       return res.status(400).json({ error: 'Path required' });
+    }
+    
+    if (path === 'null' || path === 'undefined') {
+      console.log(`File update with invalid path: "${path}"`);
+      return res.status(400).json({ error: `Invalid path: ${path}` });
+    }
+    
+    if (typeof path !== 'string') {
+      console.log(`File update with non-string path:`, typeof path, path);
+      return res.status(400).json({ error: 'Path must be a string' });
+    }
+    
+    if (path.trim() === '') {
+      console.log('File update with empty path');
+      return res.status(400).json({ error: 'Path cannot be empty' });
     }
     
     if (content === undefined) {
@@ -215,13 +254,16 @@ app.put('/api/file', async (req, res) => {
     
     // Security: prevent path traversal
     if (path.includes('..') || path.includes('/') || path.includes('\\')) {
+      console.log(`File update with invalid characters in path: "${path}"`);
       return res.status(400).json({ error: 'Invalid file path' });
     }
     
     const filePath = join(USER_FILES, path);
+    console.log(`Updating file: ${filePath}`);
     
     // Check if file exists
     if (!(await fs.pathExists(filePath))) {
+      console.log(`File not found for update: ${filePath}`);
       return res.status(404).json({ error: 'File not found' });
     }
     
