@@ -19,7 +19,7 @@ const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
 const allowed = allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowed.length === 0 || allowed.includes(origin)), credentials: true }));
 
-// Serve client (after build) from ../client/dist
+// Serve client (after build) from ./client/dist
 const clientDist = join(__dirname,'client', 'dist');
 if (await fs.pathExists(clientDist)) {
   app.use(express.static(clientDist));
@@ -142,6 +142,7 @@ app.get('/api/files', async (req, res) => {
     
     res.json(files);
   } catch (err) {
+    console.error('Error listing files:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -151,14 +152,24 @@ app.get('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
     if (!path) {
-      return res.status(400).send('Path parameter required');
+      return res.status(400).json({ error: 'Path parameter required' });
+    }
+    
+    // Security: prevent path traversal
+    if (path.includes('..') || path.includes('/') || path.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid file path' });
     }
     
     const filePath = join(USER_FILES, path);
     const content = await fs.readFile(filePath, 'utf8');
     res.send(content);
   } catch (err) {
-    res.status(404).send('File not found');
+    console.error('Error reading file:', err);
+    if (err.code === 'ENOENT') {
+      res.status(404).json({ error: 'File not found' });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -170,10 +181,22 @@ app.post('/api/file', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
     
+    // Security: prevent path traversal
+    if (path.includes('..') || path.includes('/') || path.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
     const filePath = join(USER_FILES, path);
+    
+    // Check if file already exists
+    if (await fs.pathExists(filePath)) {
+      return res.status(409).json({ error: 'File already exists' });
+    }
+    
     await fs.writeFile(filePath, content, 'utf8');
     res.json({ success: true });
   } catch (err) {
+    console.error('Error creating file:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -186,10 +209,26 @@ app.put('/api/file', async (req, res) => {
       return res.status(400).json({ error: 'Path required' });
     }
     
+    if (content === undefined) {
+      return res.status(400).json({ error: 'Content required' });
+    }
+    
+    // Security: prevent path traversal
+    if (path.includes('..') || path.includes('/') || path.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
     const filePath = join(USER_FILES, path);
+    
+    // Check if file exists
+    if (!(await fs.pathExists(filePath))) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
     await fs.writeFile(filePath, content, 'utf8');
     res.json({ success: true });
   } catch (err) {
+    console.error('Error updating file:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -199,22 +238,35 @@ app.delete('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
     if (!path) {
-      return res.status(400).send('Path parameter required');
+      return res.status(400).json({ error: 'Path parameter required' });
+    }
+    
+    // Security: prevent path traversal
+    if (path.includes('..') || path.includes('/') || path.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid file path' });
     }
     
     const filePath = join(USER_FILES, path);
+    
+    // Check if file exists
+    if (!(await fs.pathExists(filePath))) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
     await fs.remove(filePath);
     res.json({ success: true });
   } catch (err) {
+    console.error('Error deleting file:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// POST /api/run - Updated to work with file system and inline code
+// POST /api/run - Execute code
 app.post('/api/run', async (req, res) => {
   const { language: langIn, flags = '', entry, code, files = [] } = req.body || {};
 
@@ -228,8 +280,18 @@ app.post('/api/run', async (req, res) => {
   try {
     // If entry file specified, copy from user files
     if (entry) {
+      // Security: prevent path traversal
+      if (entry.includes('..') || entry.includes('/') || entry.includes('\\')) {
+        throw new Error('Invalid entry file path');
+      }
+      
       const sourceFile = join(USER_FILES, entry);
       const destFile = join(workdir, entry);
+      
+      if (!(await fs.pathExists(sourceFile))) {
+        throw new Error(`Entry file not found: ${entry}`);
+      }
+      
       const content = await fs.readFile(sourceFile, 'utf8');
       await fs.writeFile(destFile, content, 'utf8');
       createdFiles.push(destFile);
@@ -238,6 +300,15 @@ app.post('/api/run', async (req, res) => {
 
     // Write any additional provided files
     for (const f of files) {
+      if (!f.name || f.content === undefined) {
+        continue;
+      }
+      
+      // Security: prevent path traversal in additional files
+      if (f.name.includes('..') || f.name.includes('/') || f.name.includes('\\')) {
+        continue;
+      }
+      
       const filepath = join(workdir, f.name);
       await fs.ensureDir(dirname(filepath));
       await fs.writeFile(filepath, f.content, 'utf8');
@@ -254,6 +325,10 @@ app.post('/api/run', async (req, res) => {
       const mainPath = join(workdir, mainName);
       await fs.writeFile(mainPath, code, 'utf8');
       createdFiles.push(mainPath);
+    }
+
+    if (createdFiles.length === 0) {
+      throw new Error('No code provided to execute');
     }
 
     if (!language) throw new Error('Could not detect language. Provide a language or file with known extension.');
@@ -305,6 +380,7 @@ app.post('/api/run', async (req, res) => {
 
     res.json({ stdout, stderr });
   } catch (err) {
+    console.error('Execution error:', err);
     const msg = err.killed && err.signal === 'SIGTERM' ? 'Execution timed out' : (err.stderr || err.message || String(err));
     res.status(200).json({ 
       stdout: err.stdout || '', 
@@ -312,21 +388,35 @@ app.post('/api/run', async (req, res) => {
       error: err.message || 'Runtime error'
     });
   } finally {
-    // Cleanup
-    try { await fs.remove(workdir); } catch {}
+    // Cleanup temp directory
+    try { 
+      await fs.remove(workdir); 
+    } catch (cleanupErr) {
+      console.warn('Failed to cleanup temp directory:', cleanupErr);
+    }
   }
 });
 
 // Fallback to client index.html for Activity hosting after build
 app.get('*', async (req, res) => {
-  if (await fs.pathExists(join(clientDist, 'index.html'))) {
-    res.sendFile(join(clientDist, 'index.html'));
+  const indexPath = join(clientDist, 'index.html');
+  if (await fs.pathExists(indexPath)) {
+    res.sendFile(indexPath);
   } else {
-    res.status(404).send('Not built yet.');
+    res.status(404).json({ error: 'Client not built yet. Run: npm run build' });
   }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`[server] listening on :${PORT}`);
+  console.log(`[server] CodeRunner listening on port ${PORT}`);
+  console.log(`[server] Environment: ${process.env.NODE_ENV || 'production'}`);
+  console.log(`[server] Temp files: ${TEMP_ROOT}`);
+  console.log(`[server] User files: ${USER_FILES}`);
 });
