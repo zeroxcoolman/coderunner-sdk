@@ -178,7 +178,7 @@ function renderFileList() {
     el.innerHTML = `
       <span class="file-name">${f.path}</span>
       <div class="file-actions">
-        <button class="file-action-btn" onclick="showRenameModal('${f.path}')" title="Rename">📝</button>
+        <button class="file-action-btn" onclick="showRenameModal('${f.path.replace(/'/g, '\\\'')}')" title="Rename">📝</button>
         <span class="muted">${f.size || 0} B</span>
       </div>
     `;
@@ -248,6 +248,13 @@ function executeCustomButtonCode(code) {
 
 // Global functions for onclick handlers
 window.showRenameModal = (filename) => {
+  // Add validation to ensure filename is valid
+  if (!filename || typeof filename !== 'string') {
+    console.error('Invalid filename provided to showRenameModal:', filename);
+    alert('Invalid file selected for renaming');
+    return;
+  }
+  
   fileToRename = filename;
   if (currentFilenameEl) currentFilenameEl.textContent = filename;
   if (renameFileNameInput) renameFileNameInput.value = filename;
@@ -405,7 +412,24 @@ async function createNewFile() {
 
 async function renameFile() {
   try {
-    if (!renameFileNameInput || !fileToRename) return;
+    // Add comprehensive validation
+    if (!renameFileNameInput || !fileToRename) {
+      console.error('Rename operation failed - missing elements:', {
+        renameFileNameInput: !!renameFileNameInput,
+        fileToRename: fileToRename
+      });
+      alert('Unable to rename file - please try again');
+      hideRenameModal();
+      return;
+    }
+    
+    // Validate fileToRename is a valid string
+    if (typeof fileToRename !== 'string' || fileToRename.trim() === '') {
+      console.error('Invalid fileToRename value:', fileToRename);
+      alert('Invalid file selected for renaming');
+      hideRenameModal();
+      return;
+    }
     
     const newName = renameFileNameInput.value.trim();
     if (!newName) {
@@ -425,6 +449,8 @@ async function renameFile() {
     
     hideRenameModal();
     setStatus('Renaming file...');
+    
+    console.log('Attempting to rename file:', fileToRename, 'to:', newName);
     
     // Get current content
     const content = await api(`/file?path=${encodeURIComponent(fileToRename)}`);
@@ -448,13 +474,19 @@ async function renameFile() {
       activePath = newName;
     }
     
+    // Clear fileToRename after successful operation
+    const oldFileName = fileToRename;
+    fileToRename = null;
+    
     await loadFiles();
     await selectFile(newName);
-    setStatus(`Renamed to ${newName}`);
+    setStatus(`Renamed ${oldFileName} to ${newName}`);
   } catch (err) {
     console.error('Error renaming file:', err);
     alert(`Error renaming file: ${err.message}`);
     setStatus('Error renaming file');
+    // Reset fileToRename on error
+    fileToRename = null;
   }
 }
 
