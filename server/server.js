@@ -20,7 +20,7 @@ const allowed = allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowed.length === 0 || allowed.includes(origin)), credentials: true }));
 
 // Serve client (after build) from ../client/dist
-const clientDist = join(__dirname,'client', 'dist');
+const clientDist = join(__dirname, '..', 'client', 'dist');
 if (await fs.pathExists(clientDist)) {
   app.use(express.static(clientDist));
 }
@@ -188,34 +188,6 @@ app.put('/api/file', async (req, res) => {
     
     const filePath = join(USER_FILES, path);
     await fs.writeFile(filePath, content, 'utf8');
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /api/file/rename - Rename file
-app.put('/api/file/rename', async (req, res) => {
-  try {
-    const { oldPath, newPath } = req.body;
-    if (!oldPath || !newPath) {
-      return res.status(400).json({ error: 'Both oldPath and newPath required' });
-    }
-    
-    const oldFilePath = join(USER_FILES, oldPath);
-    const newFilePath = join(USER_FILES, newPath);
-    
-    // Check if old file exists
-    if (!await fs.pathExists(oldFilePath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    
-    // Check if new file already exists
-    if (await fs.pathExists(newFilePath)) {
-      return res.status(400).json({ error: 'A file with that name already exists' });
-    }
-    
-    await fs.move(oldFilePath, newFilePath);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
