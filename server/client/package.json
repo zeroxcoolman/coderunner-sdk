@@ -9,8 +9,7 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
-    "@discord/embedded-app-sdk": "https://github.com/discord/embedded-app-sdk",
-    "monaco-editor": "^0.49.0"
+    "@discord/embedded-app-sdk": "https://github.com/discord/embedded-app-sdk"
   },
   "devDependencies": {
     "vite": "^5.4.0"
