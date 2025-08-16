@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { exec as execCb } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
