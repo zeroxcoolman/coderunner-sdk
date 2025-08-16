@@ -116,6 +116,17 @@ function println(s = '') {
 
 async function api(path, opts = {}) {
   try {
+    // CRITICAL DEBUG: Log all API calls to catch null paths
+    if (path.includes('path=null') || path.includes('path=undefined')) {
+      console.error('🚨 CRITICAL: API call with null/undefined path detected!');
+      console.error('API path:', path);
+      console.error('Current stack trace:');
+      console.trace();
+      throw new Error('Invalid API call with null/undefined path');
+    }
+    
+    console.log('API call:', path, opts.method || 'GET'); // Debug log
+    
     const res = await fetch(`/api${path}`, { 
       headers: { 'Content-Type': 'application/json' }, 
       ...opts 
