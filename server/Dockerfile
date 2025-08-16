@@ -22,4 +22,4 @@ WORKDIR /app
 # Copy everything from the build stage
 COPY --from=builder /build .
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "server.js"]
