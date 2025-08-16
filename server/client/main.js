@@ -21,6 +21,7 @@ const $ = (sel) => document.querySelector(sel);
 // Wait for DOM to be ready before getting elements
 let fileListEl, codeEl, termEl, statusEl, langEl, flagsEl, runBtn;
 let newFileModal, newFileNameInput, modalCancel, modalCreate;
+let deleteFileModal, deleteFileName, deleteCancel, deleteConfirm;
 
 function initializeElements() {
   fileListEl = $('#file-list');
@@ -34,6 +35,10 @@ function initializeElements() {
   newFileNameInput = $('#new-file-name');
   modalCancel = $('#modal-cancel');
   modalCreate = $('#modal-create');
+  deleteFileModal = $('#delete-file-modal');
+  deleteFileName = $('#delete-file-name');
+  deleteCancel = $('#delete-cancel');
+  deleteConfirm = $('#delete-confirm');
 }
 
 let files = [];
@@ -198,6 +203,17 @@ function hideModal() {
   newFileModal.classList.remove('show');
 }
 
+function showDeleteModal(filename) {
+  if (!deleteFileModal || !deleteFileName) return;
+  deleteFileName.textContent = filename;
+  deleteFileModal.classList.add('show');
+}
+
+function hideDeleteModal() {
+  if (!deleteFileModal) return;
+  deleteFileModal.classList.remove('show');
+}
+
 async function createNewFile() {
   try {
     if (!newFileNameInput) return;
@@ -247,26 +263,40 @@ function setupEventListeners() {
   }
 
   if (deleteFileBtn) {
-    deleteFileBtn.addEventListener('click', async () => {
+    deleteFileBtn.addEventListener('click', () => {
       if (!activePath) {
         alert('No file selected to delete');
         return;
       }
-      
-      if (!confirm(`Delete ${activePath}?`)) return;
+      showDeleteModal(activePath);
+    });
+  }
+
+  if (deleteCancel) {
+    deleteCancel.addEventListener('click', hideDeleteModal);
+  }
+  
+  if (deleteConfirm) {
+    deleteConfirm.addEventListener('click', async () => {
+      if (!activePath) return;
       
       try {
+        hideDeleteModal();
+        setStatus('Deleting file...');
+        
         await api(`/file?path=${encodeURIComponent(activePath)}`, { 
           method: 'DELETE' 
         });
         
+        const deletedFile = activePath;
         activePath = null;
         if (codeEl) codeEl.value = '';
         await loadFiles();
-        setStatus('File deleted');
+        setStatus(`Deleted ${deletedFile}`);
       } catch (err) {
         console.error('Error deleting file:', err);
         alert(`Error deleting file: ${err.message}`);
+        setStatus('Error deleting file');
       }
     });
   }
@@ -300,6 +330,23 @@ function setupEventListeners() {
       }
     });
   }
+
+  // Close delete modal when clicking outside
+  if (deleteFileModal) {
+    deleteFileModal.addEventListener('click', (e) => {
+      if (e.target === deleteFileModal) {
+        hideDeleteModal();
+      }
+    });
+  }
+
+  // Handle Escape key to close modals
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideModal();
+      hideDeleteModal();
+    }
+  });
 
   // Editor dirty tracking and save (Ctrl/Cmd+S)
   if (codeEl) {
