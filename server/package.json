@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
-    "build": "echo \"No build step for server\""
+    "build": "cd client && npm install && npm run build"
   },
   "dependencies": {
     "cors": "^2.8.5",
