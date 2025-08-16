@@ -20,7 +20,7 @@ const allowed = allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowed.length === 0 || allowed.includes(origin)), credentials: true }));
 
 // Serve client (after build) from ../client/dist
-const clientDist = join(__dirname, '..', 'client', 'dist');
+const clientDist = join(__dirname,'client', 'dist');
 if (await fs.pathExists(clientDist)) {
   app.use(express.static(clientDist));
 }
