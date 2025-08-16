@@ -1,16 +1,10 @@
-// Minimal Activity front-end: file CRUD + basic editor + run
-// Later we can swap textarea for Monaco/CodeMirror and wire full Discord SDK flows.
-
 // Attempt to initialize Discord Embedded App SDK (non-fatal if not present in plain web dev)
 let discordSdk;
 (async () => {
   try {
-    // Dynamically import only if available (installed via npm)
     const mod = await import('@discord/embedded-app-sdk');
     discordSdk = new mod.DiscordSDK(import.meta.env.VITE_DISCORD_CLIENT_ID || '');
     await discordSdk.ready();
-    // We can expand with authorization if needed:
-    // const { code } = await discordSdk.commands.authorize({ client_id: import.meta.env.VITE_DISCORD_CLIENT_ID, response_type: 'code', scope: ['identify'] });
   } catch (e) {
     console.warn('Discord SDK not active (dev mode).');
   }
@@ -18,10 +12,22 @@ let discordSdk;
 
 const $ = (sel) => document.querySelector(sel);
 
-// Wait for DOM to be ready before getting elements
+// Global elements
 let fileListEl, codeEl, termEl, statusEl, langEl, flagsEl, runBtn;
 let newFileModal, newFileNameInput, modalCancel, modalCreate;
 let deleteFileModal, deleteFileName, deleteCancel, deleteConfirm;
+let renameFileModal, renameFileNameInput, currentFilenameEl, renameCancel, renameConfirm;
+let settingsPanel, settingsBtn, backToEditorBtn;
+let customButtonModal, customButtonName, customButtonCode, customButtonCancel, customButtonSave;
+let factoryResetModal, factoryResetCancel, factoryResetConfirm;
+let customFileActions, customButtonsList, addCustomButtonBtn;
+
+// Application state
+let files = [];
+let activePath = null;
+let dirty = false;
+let fileToRename = null;
+let customButtons = [];
 
 function initializeElements() {
   fileListEl = $('#file-list');
@@ -31,19 +37,55 @@ function initializeElements() {
   langEl = $('#language');
   flagsEl = $('#flags');
   runBtn = $('#run');
+  
   newFileModal = $('#new-file-modal');
   newFileNameInput = $('#new-file-name');
   modalCancel = $('#modal-cancel');
   modalCreate = $('#modal-create');
+  
   deleteFileModal = $('#delete-file-modal');
   deleteFileName = $('#delete-file-name');
   deleteCancel = $('#delete-cancel');
   deleteConfirm = $('#delete-confirm');
+  
+  renameFileModal = $('#rename-file-modal');
+  renameFileNameInput = $('#rename-file-name');
+  currentFilenameEl = $('#current-filename');
+  renameCancel = $('#rename-cancel');
+  renameConfirm = $('#rename-confirm');
+  
+  settingsPanel = $('#settings-panel');
+  settingsBtn = $('#settings-btn');
+  backToEditorBtn = $('#back-to-editor');
+  
+  customButtonModal = $('#custom-button-modal');
+  customButtonName = $('#custom-button-name');
+  customButtonCode = $('#custom-button-code');
+  customButtonCancel = $('#custom-button-cancel');
+  customButtonSave = $('#custom-button-save');
+  
+  factoryResetModal = $('#factory-reset-modal');
+  factoryResetCancel = $('#factory-reset-cancel');
+  factoryResetConfirm = $('#factory-reset-confirm');
+  
+  customFileActions = $('#custom-file-actions');
+  customButtonsList = $('#custom-buttons-list');
+  addCustomButtonBtn = $('#add-custom-button');
 }
 
-let files = [];
-let activePath = null;
-let dirty = false;
+// Custom buttons storage (in memory for artifact compatibility)
+function loadCustomButtons() {
+  const stored = window.customButtonsStorage || '[]';
+  try {
+    customButtons = JSON.parse(stored);
+  } catch {
+    customButtons = [];
+  }
+}
+
+function saveCustomButtons() {
+  window.customButtonsStorage = JSON.stringify(customButtons);
+}
 
 const extToLang = (p) => {
   if (!p) return '';
@@ -99,14 +141,10 @@ async function loadFiles() {
   try {
     setStatus('Loading files…');
     const result = await api('/files');
-    
-    // Ensure files is an array
     files = Array.isArray(result) ? result : [];
-    
     renderFileList();
     setStatus('Ready');
     
-    // Select first file if no active file and files exist
     if (!activePath && files.length > 0) {
       await selectFile(files[0].path);
     }
@@ -114,8 +152,6 @@ async function loadFiles() {
     console.error('Error loading files:', err);
     setStatus('Error loading files');
     println(`Error loading files: ${err.message}`);
-    
-    // Initialize empty files array on error
     files = [];
     renderFileList();
   }
@@ -139,14 +175,92 @@ function renderFileList() {
     
     const el = document.createElement('div');
     el.className = 'file' + (f.path === activePath ? ' active' : '');
-    el.innerHTML = `<span>${f.path}</span><span class="muted">${f.size || 0} B</span>`;
-    el.addEventListener('click', async () => {
+    el.innerHTML = `
+      <span class="file-name">${f.path}</span>
+      <div class="file-actions">
+        <button class="file-action-btn" onclick="showRenameModal('${f.path}')" title="Rename">📝</button>
+        <span class="muted">${f.size || 0} B</span>
+      </div>
+    `;
+    
+    // Add click handler to file name area only
+    const nameSpan = el.querySelector('.file-name');
+    nameSpan.addEventListener('click', async () => {
       if (dirty && !confirm('Discard unsaved changes?')) return;
       await selectFile(f.path);
     });
+    
     fileListEl.appendChild(el);
   });
 }
+
+function renderCustomButtons() {
+  if (!customFileActions) return;
+  
+  // Remove existing custom buttons (keep default ones)
+  const existingCustom = customFileActions.querySelectorAll('.custom-button');
+  existingCustom.forEach(btn => btn.remove());
+  
+  // Add custom buttons
+  customButtons.forEach((button, index) => {
+    const btn = document.createElement('button');
+    btn.textContent = button.name;
+    btn.className = 'custom-button';
+    btn.onclick = () => executeCustomButtonCode(button.code);
+    customFileActions.appendChild(btn);
+  });
+}
+
+function renderCustomButtonSettings() {
+  if (!customButtonsList) return;
+  
+  customButtonsList.innerHTML = '';
+  
+  if (customButtons.length === 0) {
+    customButtonsList.innerHTML = '<p class="muted">No custom buttons added yet.</p>';
+    return;
+  }
+  
+  customButtons.forEach((button, index) => {
+    const item = document.createElement('div');
+    item.className = 'custom-button-item';
+    item.innerHTML = `
+      <div class="custom-button-preview">${button.name}</div>
+      <div style="flex: 1; font-family: monospace; font-size: 11px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        ${button.code.substring(0, 60)}${button.code.length > 60 ? '...' : ''}
+      </div>
+      <button onclick="removeCustomButton(${index})" style="background-color: #dc2626; color: white; padding: 4px 8px; font-size: 11px; border: none; border-radius: 4px; cursor: pointer;">Remove</button>
+    `;
+    customButtonsList.appendChild(item);
+  });
+}
+
+function executeCustomButtonCode(code) {
+  try {
+    // Create a function with available context
+    const func = new Function('files', 'activePath', 'selectFile', 'saveActive', 'println', 'api', 'setStatus', code);
+    func(files, activePath, selectFile, saveActive, println, api, setStatus);
+  } catch (err) {
+    println(`Custom button error: ${err.message}`);
+    console.error('Custom button execution error:', err);
+  }
+}
+
+// Global functions for onclick handlers
+window.showRenameModal = (filename) => {
+  fileToRename = filename;
+  if (currentFilenameEl) currentFilenameEl.textContent = filename;
+  if (renameFileNameInput) renameFileNameInput.value = filename;
+  if (renameFileModal) renameFileModal.classList.add('show');
+  if (renameFileNameInput) renameFileNameInput.focus();
+};
+
+window.removeCustomButton = (index) => {
+  customButtons.splice(index, 1);
+  saveCustomButtons();
+  renderCustomButtons();
+  renderCustomButtonSettings();
+};
 
 async function selectFile(path) {
   try {
@@ -156,7 +270,6 @@ async function selectFile(path) {
     dirty = false;
     renderFileList();
     
-    // Auto-detect language
     const autoLang = extToLang(path);
     if (autoLang && langEl && !langEl.value) {
       langEl.value = autoLang;
@@ -190,7 +303,7 @@ async function saveActive() {
   }
 }
 
-// Modal handling
+// Modal functions
 function showModal() {
   if (!newFileModal || !newFileNameInput) return;
   newFileModal.classList.add('show');
@@ -214,6 +327,46 @@ function hideDeleteModal() {
   deleteFileModal.classList.remove('show');
 }
 
+function hideRenameModal() {
+  if (!renameFileModal) return;
+  renameFileModal.classList.remove('show');
+  fileToRename = null;
+}
+
+function showCustomButtonModal() {
+  if (!customButtonModal) return;
+  customButtonModal.classList.add('show');
+  if (customButtonName) customButtonName.value = '';
+  if (customButtonCode) customButtonCode.value = '';
+  if (customButtonName) customButtonName.focus();
+}
+
+function hideCustomButtonModal() {
+  if (!customButtonModal) return;
+  customButtonModal.classList.remove('show');
+}
+
+function showFactoryResetModal() {
+  if (!factoryResetModal) return;
+  factoryResetModal.classList.add('show');
+}
+
+function hideFactoryResetModal() {
+  if (!factoryResetModal) return;
+  factoryResetModal.classList.remove('show');
+}
+
+function showSettings() {
+  if (!settingsPanel) return;
+  settingsPanel.classList.add('show');
+  renderCustomButtonSettings();
+}
+
+function hideSettings() {
+  if (!settingsPanel) return;
+  settingsPanel.classList.remove('show');
+}
+
 async function createNewFile() {
   try {
     if (!newFileNameInput) return;
@@ -224,7 +377,6 @@ async function createNewFile() {
       return;
     }
     
-    // Check if file already exists
     if (files.some(f => f.path === name)) {
       alert('File already exists!');
       return;
@@ -251,15 +403,110 @@ async function createNewFile() {
   }
 }
 
+async function renameFile() {
+  try {
+    if (!renameFileNameInput || !fileToRename) return;
+    
+    const newName = renameFileNameInput.value.trim();
+    if (!newName) {
+      alert('Please enter a filename');
+      return;
+    }
+    
+    if (newName === fileToRename) {
+      hideRenameModal();
+      return;
+    }
+    
+    if (files.some(f => f.path === newName)) {
+      alert('File already exists!');
+      return;
+    }
+    
+    hideRenameModal();
+    setStatus('Renaming file...');
+    
+    // Get current content
+    const content = await api(`/file?path=${encodeURIComponent(fileToRename)}`);
+    
+    // Create new file with same content
+    await api('/file', { 
+      method: 'POST', 
+      body: JSON.stringify({ 
+        path: newName, 
+        content: content 
+      })
+    });
+    
+    // Delete old file
+    await api(`/file?path=${encodeURIComponent(fileToRename)}`, { 
+      method: 'DELETE' 
+    });
+    
+    // Update active path if it was the renamed file
+    if (activePath === fileToRename) {
+      activePath = newName;
+    }
+    
+    await loadFiles();
+    await selectFile(newName);
+    setStatus(`Renamed to ${newName}`);
+  } catch (err) {
+    console.error('Error renaming file:', err);
+    alert(`Error renaming file: ${err.message}`);
+    setStatus('Error renaming file');
+  }
+}
+
+function addCustomButton() {
+  if (!customButtonName || !customButtonCode) return;
+  
+  const name = customButtonName.value.trim();
+  const code = customButtonCode.value.trim();
+  
+  if (!name) {
+    alert('Please enter a button name');
+    return;
+  }
+  
+  if (!code) {
+    alert('Please enter JavaScript code');
+    return;
+  }
+  
+  customButtons.push({ name, code });
+  saveCustomButtons();
+  renderCustomButtons();
+  renderCustomButtonSettings();
+  hideCustomButtonModal();
+  setStatus(`Added custom button: ${name}`);
+}
+
+function factoryReset() {
+  customButtons = [];
+  saveCustomButtons();
+  renderCustomButtons();
+  renderCustomButtonSettings();
+  hideFactoryResetModal();
+  setStatus('Customizations reset to factory defaults');
+}
+
 function setupEventListeners() {
+  // Settings
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', showSettings);
+  }
+  
+  if (backToEditorBtn) {
+    backToEditorBtn.addEventListener('click', hideSettings);
+  }
+  
   // File actions
   const newFileBtn = $('#new-file');
   const deleteFileBtn = $('#delete-file');
   
   if (newFileBtn) {
-    newFileBtn.addEventListener('click', () => {
-      showModal();
-    });
+    newFileBtn.addEventListener('click', showModal);
   }
 
   if (deleteFileBtn) {
@@ -272,6 +519,49 @@ function setupEventListeners() {
     });
   }
 
+  // New file modal
+  if (modalCancel) {
+    modalCancel.addEventListener('click', hideModal);
+  }
+  
+  if (modalCreate) {
+    modalCreate.addEventListener('click', createNewFile);
+  }
+
+  if (newFileNameInput) {
+    newFileNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createNewFile();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideModal();
+      }
+    });
+  }
+
+  // Rename file modal
+  if (renameCancel) {
+    renameCancel.addEventListener('click', hideRenameModal);
+  }
+  
+  if (renameConfirm) {
+    renameConfirm.addEventListener('click', renameFile);
+  }
+
+  if (renameFileNameInput) {
+    renameFileNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        renameFile();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideRenameModal();
+      }
+    });
+  }
+
+  // Delete file modal
   if (deleteCancel) {
     deleteCancel.addEventListener('click', hideDeleteModal);
   }
@@ -301,50 +591,54 @@ function setupEventListeners() {
     });
   }
 
-  if (modalCancel) {
-    modalCancel.addEventListener('click', hideModal);
+  // Custom button modal
+  if (addCustomButtonBtn) {
+    addCustomButtonBtn.addEventListener('click', showCustomButtonModal);
   }
   
-  if (modalCreate) {
-    modalCreate.addEventListener('click', createNewFile);
+  if (customButtonCancel) {
+    customButtonCancel.addEventListener('click', hideCustomButtonModal);
+  }
+  
+  if (customButtonSave) {
+    customButtonSave.addEventListener('click', addCustomButton);
   }
 
-  // Handle Enter key in modal
-  if (newFileNameInput) {
-    newFileNameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        createNewFile();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        hideModal();
-      }
-    });
+  // Factory reset modal
+  const factoryResetBtn = $('#factory-reset');
+  if (factoryResetBtn) {
+    factoryResetBtn.addEventListener('click', showFactoryResetModal);
+  }
+  
+  if (factoryResetCancel) {
+    factoryResetCancel.addEventListener('click', hideFactoryResetModal);
+  }
+  
+  if (factoryResetConfirm) {
+    factoryResetConfirm.addEventListener('click', factoryReset);
   }
 
-  // Close modal when clicking outside
-  if (newFileModal) {
-    newFileModal.addEventListener('click', (e) => {
-      if (e.target === newFileModal) {
-        hideModal();
-      }
-    });
-  }
+  // Modal click-outside-to-close
+  const modals = [newFileModal, renameFileModal, deleteFileModal, customButtonModal, factoryResetModal];
+  modals.forEach(modal => {
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('show');
+        }
+      });
+    }
+  });
 
-  // Close delete modal when clicking outside
-  if (deleteFileModal) {
-    deleteFileModal.addEventListener('click', (e) => {
-      if (e.target === deleteFileModal) {
-        hideDeleteModal();
-      }
-    });
-  }
-
-  // Handle Escape key to close modals
+  // ESC key to close modals and settings
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       hideModal();
+      hideRenameModal();
       hideDeleteModal();
+      hideCustomButtonModal();
+      hideFactoryResetModal();
+      hideSettings();
     }
   });
 
@@ -372,10 +666,8 @@ function setupEventListeners() {
       }
       
       try {
-        // Save current file before running
         await saveActive();
         
-        // Clear terminal
         if (termEl) termEl.textContent = '';
         setStatus('Running…');
         
@@ -419,12 +711,12 @@ function setupEventListeners() {
   }
 }
 
-// Initialize everything when DOM is ready
 function initialize() {
   initializeElements();
+  loadCustomButtons();
   setupEventListeners();
+  renderCustomButtons();
   
-  // Load files
   loadFiles().catch(err => {
     console.error('Failed to load files:', err);
     println(`Failed to load files: ${err.message}`);
@@ -436,6 +728,5 @@ function initialize() {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initialize);
 } else {
-  // Already loaded
   initialize();
 }
