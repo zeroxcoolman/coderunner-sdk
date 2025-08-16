@@ -2,32 +2,39 @@
 // Later we can swap textarea for Monaco/CodeMirror and wire full Discord SDK flows.
 
 // Attempt to initialize Discord Embedded App SDK (non-fatal if not present in plain web dev)
-console.log("Reached Client/main.js!");
 let discordSdk;
 (async () => {
   try {
     // Dynamically import only if available (installed via npm)
     const mod = await import('@discord/embedded-app-sdk');
     discordSdk = new mod.DiscordSDK(import.meta.env.VITE_DISCORD_CLIENT_ID || '');
-    console.log("initializing discord sdk");
     await discordSdk.ready();
-    console.log("successfully intialized discord sdk");
-    console.log("Hello World!");
     // We can expand with authorization if needed:
-    const { code } = await discordSdk.commands.authorize({ client_id: import.meta.env.VITE_DISCORD_CLIENT_ID, response_type: 'code', scope: ['identify'] });
+    // const { code } = await discordSdk.commands.authorize({ client_id: import.meta.env.VITE_DISCORD_CLIENT_ID, response_type: 'code', scope: ['identify'] });
   } catch (e) {
     console.warn('Discord SDK not active (dev mode).');
   }
 })();
 
 const $ = (sel) => document.querySelector(sel);
-const fileListEl = $('#file-list');
-const codeEl = $('#codearea');
-const termEl = $('#terminal');
-const statusEl = $('#status');
-const langEl = $('#language');
-const flagsEl = $('#flags');
-const runBtn = $('#run');
+
+// Wait for DOM to be ready before getting elements
+let fileListEl, codeEl, termEl, statusEl, langEl, flagsEl, runBtn;
+let newFileModal, newFileNameInput, modalCancel, modalCreate;
+
+function initializeElements() {
+  fileListEl = $('#file-list');
+  codeEl = $('#codearea');
+  termEl = $('#terminal');
+  statusEl = $('#status');
+  langEl = $('#language');
+  flagsEl = $('#flags');
+  runBtn = $('#run');
+  newFileModal = $('#new-file-modal');
+  newFileNameInput = $('#new-file-name');
+  modalCancel = $('#modal-cancel');
+  modalCreate = $('#modal-create');
+}
 
 let files = [];
 let activePath = null;
@@ -39,38 +46,95 @@ const extToLang = (p) => {
   if (ext === 'js' || ext === 'mjs' || ext === 'cjs') return 'javascript';
   if (ext === 'py') return 'python';
   if (ext === 'sh' || ext === 'bash') return 'bash';
+  if (ext === 'c') return 'c';
+  if (ext === 'cpp' || ext === 'cc' || ext === 'cxx') return 'cpp';
+  if (ext === 'rs') return 'rust';
+  if (ext === 'go') return 'go';
+  if (ext === 'php') return 'php';
+  if (ext === 'lua') return 'lua';
+  if (ext === 'rb') return 'ruby';
   return '';
 };
 
 function setStatus(msg) {
-  statusEl.textContent = msg;
+  if (statusEl) statusEl.textContent = msg;
 }
 
 function println(s = '') {
-  termEl.textContent += s + '\n';
-  termEl.scrollTop = termEl.scrollHeight;
+  if (termEl) {
+    termEl.textContent += s + '\n';
+    termEl.scrollTop = termEl.scrollHeight;
+  }
 }
 
 async function api(path, opts = {}) {
-  const res = await fetch(`/api${path}`, { headers: { 'Content-Type': 'application/json' }, ...opts });
-  if (!res.ok) throw new Error(await res.text());
-  return res.headers.get('content-type')?.includes('application/json') ? res.json() : res.text();
+  try {
+    const res = await fetch(`/api${path}`, { 
+      headers: { 'Content-Type': 'application/json' }, 
+      ...opts 
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return await res.json();
+    }
+    return await res.text();
+  } catch (err) {
+    console.error('API Error:', err);
+    throw err;
+  }
 }
 
 async function loadFiles() {
-  setStatus('Loading files…');
-  files = await api('/files');
-  renderFileList();
-  setStatus('Ready');
-  if (!activePath && files.length) selectFile(files[0].path);
+  try {
+    setStatus('Loading files…');
+    const result = await api('/files');
+    
+    // Ensure files is an array
+    files = Array.isArray(result) ? result : [];
+    
+    renderFileList();
+    setStatus('Ready');
+    
+    // Select first file if no active file and files exist
+    if (!activePath && files.length > 0) {
+      await selectFile(files[0].path);
+    }
+  } catch (err) {
+    console.error('Error loading files:', err);
+    setStatus('Error loading files');
+    println(`Error loading files: ${err.message}`);
+    
+    // Initialize empty files array on error
+    files = [];
+    renderFileList();
+  }
 }
 
 function renderFileList() {
+  if (!fileListEl) return;
+  
   fileListEl.innerHTML = '';
+  
+  if (!Array.isArray(files)) {
+    console.error('Files is not an array:', files);
+    return;
+  }
+  
   files.forEach(f => {
+    if (!f || typeof f.path !== 'string') {
+      console.warn('Invalid file object:', f);
+      return;
+    }
+    
     const el = document.createElement('div');
     el.className = 'file' + (f.path === activePath ? ' active' : '');
-    el.innerHTML = `<span>${f.path}</span><span class="muted">${f.size} B</span>`;
+    el.innerHTML = `<span>${f.path}</span><span class="muted">${f.size || 0} B</span>`;
     el.addEventListener('click', async () => {
       if (dirty && !confirm('Discard unsaved changes?')) return;
       await selectFile(f.path);
@@ -80,73 +144,251 @@ function renderFileList() {
 }
 
 async function selectFile(path) {
-  const content = await api(`/file?path=${encodeURIComponent(path)}`);
-  activePath = path;
-  codeEl.value = content;
-  dirty = false;
-  renderFileList();
-  const autoLang = extToLang(path);
-  if (autoLang && !langEl.value) langEl.value = autoLang;
+  try {
+    const content = await api(`/file?path=${encodeURIComponent(path)}`);
+    activePath = path;
+    if (codeEl) codeEl.value = content || '';
+    dirty = false;
+    renderFileList();
+    
+    // Auto-detect language
+    const autoLang = extToLang(path);
+    if (autoLang && langEl && !langEl.value) {
+      langEl.value = autoLang;
+    }
+    
+    setStatus(`Loaded ${path}`);
+  } catch (err) {
+    console.error('Error selecting file:', err);
+    setStatus('Error loading file');
+    println(`Error loading file: ${err.message}`);
+  }
 }
 
 async function saveActive() {
-  if (!activePath) return;
-  await api('/file', { method: 'PUT', body: JSON.stringify({ path: activePath, content: codeEl.value })});
-  dirty = false;
-  setStatus('Saved');
-}
-
-// File actions
-$('#new-file').addEventListener('click', async () => {
-  const name = prompt('New file name (e.g., main.js)');
-  if (!name) return;
-  await api('/file', { method: 'POST', body: JSON.stringify({ path: name, content: '' })});
-  await loadFiles();
-  await selectFile(name);
-});
-
-$('#delete-file').addEventListener('click', async () => {
-  if (!activePath) return;
-  if (!confirm(`Delete ${activePath}?`)) return;
-  await api(`/file?path=${encodeURIComponent(activePath)}`, { method: 'DELETE' });
-  activePath = null;
-  await loadFiles();
-});
-
-// Editor dirty tracking and save (Ctrl/Cmd+S)
-codeEl.addEventListener('input', () => { dirty = true; });
-window.addEventListener('keydown', async (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault();
-    await saveActive();
-  }
-});
-
-// Run
-runBtn.addEventListener('click', async () => {
-  if (!activePath) return;
-  await saveActive();
-  termEl.textContent = '';
-  setStatus('Running…');
-  println(`$ ${langEl.value || extToLang(activePath) || 'auto'} ${activePath}`);
+  if (!activePath || !codeEl) return;
+  
   try {
-    const res = await api('/run', {
-      method: 'POST',
-      body: JSON.stringify({
-        language: langEl.value || extToLang(activePath) || '',
-        flags: flagsEl.value || '',
-        entry: activePath
+    await api('/file', { 
+      method: 'PUT', 
+      body: JSON.stringify({ 
+        path: activePath, 
+        content: codeEl.value || '' 
       })
     });
-    if (res.stdout) println(res.stdout);
-    if (res.stderr) println(res.stderr);
-    if (res.error) println(`error: ${res.error}`);
-    setStatus('Done');
+    dirty = false;
+    setStatus('Saved');
   } catch (err) {
-    println(String(err));
-    setStatus('Error');
+    console.error('Error saving file:', err);
+    setStatus('Error saving file');
+    println(`Error saving file: ${err.message}`);
   }
-});
+}
 
-// Initial load
-loadFiles().catch(err => println(String(err)));
+// Modal handling
+function showModal() {
+  if (!newFileModal || !newFileNameInput) return;
+  newFileModal.classList.add('show');
+  newFileNameInput.value = '';
+  newFileNameInput.focus();
+}
+
+function hideModal() {
+  if (!newFileModal) return;
+  newFileModal.classList.remove('show');
+}
+
+async function createNewFile() {
+  try {
+    if (!newFileNameInput) return;
+    
+    const name = newFileNameInput.value.trim();
+    if (!name) {
+      alert('Please enter a filename');
+      return;
+    }
+    
+    // Check if file already exists
+    if (files.some(f => f.path === name)) {
+      alert('File already exists!');
+      return;
+    }
+    
+    hideModal();
+    setStatus('Creating file...');
+    
+    await api('/file', { 
+      method: 'POST', 
+      body: JSON.stringify({ 
+        path: name, 
+        content: '' 
+      })
+    });
+    
+    await loadFiles();
+    await selectFile(name);
+    setStatus(`Created ${name}`);
+  } catch (err) {
+    console.error('Error creating file:', err);
+    alert(`Error creating file: ${err.message}`);
+    setStatus('Error creating file');
+  }
+}
+
+function setupEventListeners() {
+  // File actions
+  const newFileBtn = $('#new-file');
+  const deleteFileBtn = $('#delete-file');
+  
+  if (newFileBtn) {
+    newFileBtn.addEventListener('click', () => {
+      showModal();
+    });
+  }
+
+  if (deleteFileBtn) {
+    deleteFileBtn.addEventListener('click', async () => {
+      if (!activePath) {
+        alert('No file selected to delete');
+        return;
+      }
+      
+      if (!confirm(`Delete ${activePath}?`)) return;
+      
+      try {
+        await api(`/file?path=${encodeURIComponent(activePath)}`, { 
+          method: 'DELETE' 
+        });
+        
+        activePath = null;
+        if (codeEl) codeEl.value = '';
+        await loadFiles();
+        setStatus('File deleted');
+      } catch (err) {
+        console.error('Error deleting file:', err);
+        alert(`Error deleting file: ${err.message}`);
+      }
+    });
+  }
+
+  if (modalCancel) {
+    modalCancel.addEventListener('click', hideModal);
+  }
+  
+  if (modalCreate) {
+    modalCreate.addEventListener('click', createNewFile);
+  }
+
+  // Handle Enter key in modal
+  if (newFileNameInput) {
+    newFileNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createNewFile();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideModal();
+      }
+    });
+  }
+
+  // Close modal when clicking outside
+  if (newFileModal) {
+    newFileModal.addEventListener('click', (e) => {
+      if (e.target === newFileModal) {
+        hideModal();
+      }
+    });
+  }
+
+  // Editor dirty tracking and save (Ctrl/Cmd+S)
+  if (codeEl) {
+    codeEl.addEventListener('input', () => { 
+      dirty = true; 
+      setStatus(activePath ? `${activePath} (unsaved)` : 'Unsaved changes');
+    });
+  }
+
+  window.addEventListener('keydown', async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      await saveActive();
+    }
+  });
+
+  // Run button
+  if (runBtn) {
+    runBtn.addEventListener('click', async () => {
+      if (!activePath) {
+        alert('No file selected to run');
+        return;
+      }
+      
+      try {
+        // Save current file before running
+        await saveActive();
+        
+        // Clear terminal
+        if (termEl) termEl.textContent = '';
+        setStatus('Running…');
+        
+        const language = (langEl?.value) || extToLang(activePath);
+        const flags = (flagsEl?.value) || '';
+        
+        println(`$ Running ${activePath} (${language || 'auto-detect'})`);
+        
+        const result = await api('/run', {
+          method: 'POST',
+          body: JSON.stringify({
+            language: language,
+            flags: flags,
+            entry: activePath
+          })
+        });
+        
+        if (result.stdout) {
+          println('--- OUTPUT ---');
+          println(result.stdout);
+        }
+        
+        if (result.stderr) {
+          println('--- ERRORS ---');
+          println(result.stderr);
+        }
+        
+        if (result.error) {
+          println('--- ERROR ---');
+          println(result.error);
+        }
+        
+        setStatus('Done');
+      } catch (err) {
+        console.error('Error running code:', err);
+        println(`--- ERROR ---`);
+        println(err.message);
+        setStatus('Error');
+      }
+    });
+  }
+}
+
+// Initialize everything when DOM is ready
+function initialize() {
+  initializeElements();
+  setupEventListeners();
+  
+  // Load files
+  loadFiles().catch(err => {
+    console.error('Failed to load files:', err);
+    println(`Failed to load files: ${err.message}`);
+    setStatus('Error');
+  });
+}
+
+// Wait for DOM to be ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize);
+} else {
+  // Already loaded
+  initialize();
+}
