@@ -571,15 +571,28 @@ async function renameFile() {
       return;
     }
     
+    // Store the original filename before hiding modal
+    const originalFileName = fileToRename;
     hideRenameModal();
     setStatus('Renaming file...');
     
-    console.log('Attempting to rename file from:', fileToRename, 'to:', newName);
+    console.log('Attempting to rename file from:', originalFileName, 'to:', newName);
     
-    // Get current content
-    const content = await api(`/file?path=${encodeURIComponent(fileToRename)}`);
+    // CRITICAL FIX: Validate paths before API calls
+    if (!originalFileName || originalFileName === 'null' || originalFileName === 'undefined') {
+      throw new Error('Invalid original filename for rename operation');
+    }
+    
+    if (!newName || newName === 'null' || newName === 'undefined') {
+      throw new Error('Invalid new filename for rename operation');
+    }
+    
+    // Get current content (with validated path)
+    console.log('Getting content for file:', originalFileName);
+    const content = await api(`/file?path=${encodeURIComponent(originalFileName)}`);
     
     // Create new file with same content
+    console.log('Creating new file:', newName);
     await api('/file', { 
       method: 'POST', 
       body: JSON.stringify({ 
@@ -588,23 +601,21 @@ async function renameFile() {
       })
     });
     
-    // Delete old file
-    await api(`/file?path=${encodeURIComponent(fileToRename)}`, { 
+    // Delete old file (with validated path)
+    console.log('Deleting old file:', originalFileName);
+    await api(`/file?path=${encodeURIComponent(originalFileName)}`, { 
       method: 'DELETE' 
     });
     
     // Update active path if it was the renamed file
-    if (activePath === fileToRename) {
+    if (activePath === originalFileName) {
       activePath = newName;
+      console.log('Updated activePath to:', newName);
     }
-    
-    // Clear fileToRename after successful operation
-    const oldFileName = fileToRename;
-    fileToRename = null;
     
     await loadFiles();
     await selectFile(newName);
-    setStatus(`Renamed ${oldFileName} to ${newName}`);
+    setStatus(`Renamed ${originalFileName} to ${newName}`);
     console.log('File renamed successfully'); // Debug log
   } catch (err) {
     console.error('Error renaming file:', err);
