@@ -11,11 +11,6 @@
       header { display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid #e5e7eb; }
       header img { width:20px; height:20px; }
       .toolbar { display:flex; gap:8px; align-items:center; }
-      .user-info { display: flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 8px; }
-      .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(45deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; }
-      .user-name { font-weight: 500; color: #374151; }
-      .settings-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-      .settings-btn:hover { background: #f3f4f6; }
       .content { display:grid; grid-template-columns: 240px 1fr; min-height: 0; }
       .sidebar { border-right:1px solid #e5e7eb; padding:8px; overflow:auto; }
       .editor-wrap { display:grid; grid-template-rows: 1fr 180px; min-height: 0; }
@@ -28,8 +23,7 @@
       button.primary { background:#111827; color:white; border-color:#111827; }
       button:hover { opacity: 0.8; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
-      .files-actions { display:flex; gap:6px; margin-top:8px; flex-wrap: wrap; }
-      .files-actions button { font-size: 12px; padding: 4px 8px; }
+      .files-actions { display:flex; gap:6px; margin-top:8px; }
       footer { display:flex; align-items:center; gap:8px; padding:8px 12px; border-top:1px solid #e5e7eb; }
       #codearea { width:100%; height:100%; border:0; outline:0; padding:12px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; resize: none; }
       
@@ -78,152 +72,6 @@
         opacity: 0.7;
         pointer-events: none;
       }
-
-      /* Settings page styles */
-      .settings-page {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: white;
-        z-index: 2000;
-        overflow: auto;
-      }
-      .settings-page.show { display: block; }
-      .settings-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 20px;
-        border-bottom: 1px solid #e5e7eb;
-        background: #f9fafb;
-      }
-      .back-btn {
-        padding: 8px 12px;
-        background: #374151;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .settings-content {
-        display: grid;
-        grid-template-columns: 250px 1fr;
-        height: calc(100vh - 73px);
-      }
-      .settings-sidebar {
-        background: #f8fafc;
-        border-right: 1px solid #e5e7eb;
-        padding: 20px;
-      }
-      .settings-main {
-        padding: 20px;
-        overflow: auto;
-      }
-      .setting-group {
-        margin-bottom: 30px;
-      }
-      .setting-group h3 {
-        margin: 0 0 15px 0;
-        color: #1f2937;
-        font-size: 18px;
-      }
-      .setting-item {
-        margin-bottom: 15px;
-      }
-      .setting-item label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 500;
-        color: #374151;
-      }
-      .color-picker {
-        width: 50px;
-        height: 35px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      .preview-area {
-        background: #f3f4f6;
-        border: 2px dashed #d1d5db;
-        border-radius: 8px;
-        padding: 20px;
-        margin-top: 20px;
-        min-height: 400px;
-      }
-      .custom-button {
-        display: inline-block;
-        padding: 6px 12px;
-        margin: 5px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        background: white;
-        cursor: pointer;
-        position: relative;
-      }
-      .custom-button:hover {
-        background: #f3f4f6;
-      }
-      .custom-button.selected {
-        border-color: #3b82f6;
-        background: #eff6ff;
-      }
-      .delete-btn {
-        position: absolute;
-        top: -8px;
-        right: -8px;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #ef4444;
-        color: white;
-        border: none;
-        cursor: pointer;
-        font-size: 10px;
-        display: none;
-      }
-      .custom-button.selected .delete-btn {
-        display: block;
-      }
-      .nav-item {
-        padding: 10px 15px;
-        margin-bottom: 5px;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .nav-item:hover {
-        background: #e2e8f0;
-      }
-      .nav-item.active {
-        background: #3b82f6;
-        color: white;
-      }
-      .restore-btn {
-        background: #dc2626;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 6px;
-        cursor: pointer;
-        margin-top: 20px;
-      }
-      .html-editor {
-        width: 100%;
-        height: 300px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        padding: 12px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 13px;
-        resize: vertical;
-      }
     </style>
   </head>
   <body>
@@ -231,14 +79,7 @@
       <header>
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" alt="logo" />
         <strong>CodeRunner Activity</strong>
-        <div class="user-info">
-          <div class="user-avatar" id="user-avatar">?</div>
-          <span class="user-name" id="user-name">Loading...</span>
-          <button class="settings-btn" id="settings-btn" title="Settings">
-            ⚙️
-          </button>
-        </div>
-        <div class="toolbar">
+        <div class="toolbar" style="margin-left:auto">
           <label class="muted" for="language">Language</label>
           <select id="language">
             <option value="">auto</option>
@@ -262,7 +103,6 @@
           <div id="file-list"></div>
           <div class="files-actions">
             <button id="new-file">New File</button>
-            <button id="rename-file">Rename</button>
             <button id="delete-file">Delete File</button>
           </div>
         </aside>
@@ -276,108 +116,6 @@
       <footer>
         <div class="muted" id="status">Ready</div>
       </footer>
-    </div>
-
-    <!-- Settings Page -->
-    <div id="settings-page" class="settings-page">
-      <div class="settings-header">
-        <button class="back-btn" id="back-to-workspace">
-          ← Back to Workspace
-        </button>
-        <h2>CodeRunner Settings</h2>
-      </div>
-      <div class="settings-content">
-        <div class="settings-sidebar">
-          <div class="nav-item active" data-section="appearance">🎨 Appearance</div>
-          <div class="nav-item" data-section="interface">🖥️ Interface</div>
-          <div class="nav-item" data-section="buttons">🔘 Custom Buttons</div>
-          <div class="nav-item" data-section="html-editor">📝 HTML Editor</div>
-          <div class="nav-item" data-section="advanced">⚡ Advanced</div>
-        </div>
-        <div class="settings-main">
-          <!-- Appearance Section -->
-          <div id="appearance-section" class="setting-section">
-            <div class="setting-group">
-              <h3>Color Theme</h3>
-              <div class="setting-item">
-                <label>Primary Color</label>
-                <input type="color" class="color-picker" id="primary-color" value="#111827" />
-              </div>
-              <div class="setting-item">
-                <label>Background Color</label>
-                <input type="color" class="color-picker" id="bg-color" value="#ffffff" />
-              </div>
-              <div class="setting-item">
-                <label>Terminal Background</label>
-                <input type="color" class="color-picker" id="terminal-bg" value="#0b0b0b" />
-              </div>
-            </div>
-            <div class="setting-group">
-              <h3>Typography</h3>
-              <div class="setting-item">
-                <label>Editor Font Size</label>
-                <input type="range" id="font-size" min="10" max="20" value="13" />
-                <span id="font-size-value">13px</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Interface Section -->
-          <div id="interface-section" class="setting-section" style="display: none;">
-            <div class="setting-group">
-              <h3>Layout</h3>
-              <div class="setting-item">
-                <label>Sidebar Width</label>
-                <input type="range" id="sidebar-width" min="200" max="400" value="240" />
-                <span id="sidebar-width-value">240px</span>
-              </div>
-              <div class="setting-item">
-                <label>Terminal Height</label>
-                <input type="range" id="terminal-height" min="100" max="300" value="180" />
-                <span id="terminal-height-value">180px</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Custom Buttons Section -->
-          <div id="buttons-section" class="setting-section" style="display: none;">
-            <div class="setting-group">
-              <h3>Custom Buttons</h3>
-              <button id="add-custom-button" class="primary">Add Button</button>
-              <div class="preview-area" id="buttons-preview">
-                <p>Custom buttons will appear here. Click "Add Button" to create your first one!</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- HTML Editor Section -->
-          <div id="html-editor-section" class="setting-section" style="display: none;">
-            <div class="setting-group">
-              <h3>Live HTML Editor</h3>
-              <p>Edit the HTML structure directly. Changes are applied in real-time to your workspace.</p>
-              <textarea id="html-editor" class="html-editor" placeholder="HTML content will load here..."></textarea>
-              <br>
-              <button id="apply-html" class="primary">Apply Changes</button>
-              <button id="reset-html">Reset to Default</button>
-            </div>
-          </div>
-
-          <!-- Advanced Section -->
-          <div id="advanced-section" class="setting-section" style="display: none;">
-            <div class="setting-group">
-              <h3>Reset & Restore</h3>
-              <p>Restore CodeRunner to its original state. This will remove all customizations.</p>
-              <button class="restore-btn" id="restore-defaults">Restore to Defaults</button>
-            </div>
-            <div class="setting-group">
-              <h3>Import/Export Settings</h3>
-              <button id="export-settings">Export Settings</button>
-              <button id="import-settings">Import Settings</button>
-              <input type="file" id="settings-file" accept=".json" style="display: none;" />
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- New File Modal -->
@@ -395,21 +133,6 @@
       </div>
     </div>
 
-    <!-- Rename File Modal -->
-    <div id="rename-file-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">Rename File</div>
-        <div class="modal-body">
-          <input type="text" id="rename-file-name" placeholder="Enter new filename..." />
-          <div class="examples">Current: <span id="current-filename"></span></div>
-        </div>
-        <div class="modal-footer">
-          <button id="rename-cancel">Cancel</button>
-          <button id="rename-confirm" class="primary">Rename</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Delete File Modal -->
     <div id="delete-file-modal" class="modal">
       <div class="modal-content">
@@ -421,23 +144,6 @@
         <div class="modal-footer">
           <button id="delete-cancel">No, Cancel</button>
           <button id="delete-confirm" class="primary" style="background-color: #dc2626;">Yes, Delete</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Custom Button Modal -->
-    <div id="custom-button-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">Create Custom Button</div>
-        <div class="modal-body">
-          <input type="text" id="button-text" placeholder="Button text..." />
-          <input type="text" id="button-action" placeholder="JavaScript action (e.g., alert('Hello!'))" />
-          <input type="color" id="button-color" value="#3b82f6" />
-          <div class="examples">The button will execute the JavaScript you enter</div>
-        </div>
-        <div class="modal-footer">
-          <button id="button-cancel">Cancel</button>
-          <button id="button-create" class="primary">Create Button</button>
         </div>
       </div>
     </div>
