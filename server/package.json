@@ -13,5 +13,11 @@
     "express": "^4.19.2",
     "fs-extra": "^11.2.0",
     "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
