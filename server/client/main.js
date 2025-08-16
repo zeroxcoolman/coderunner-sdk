@@ -14,7 +14,7 @@ let discordSdk;
     console.log("successfully intialized discord sdk");
     console.log("Hello World!");
     // We can expand with authorization if needed:
-    // const { code } = await discordSdk.commands.authorize({ client_id: import.meta.env.VITE_DISCORD_CLIENT_ID, response_type: 'code', scope: ['identify'] });
+    const { code } = await discordSdk.commands.authorize({ client_id: import.meta.env.VITE_DISCORD_CLIENT_ID, response_type: 'code', scope: ['identify'] });
   } catch (e) {
     console.warn('Discord SDK not active (dev mode).');
   }
