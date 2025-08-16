@@ -178,7 +178,7 @@ function renderFileList() {
     el.innerHTML = `
       <span class="file-name">${f.path}</span>
       <div class="file-actions">
-        <button class="file-action-btn" onclick="showRenameModal('${f.path.replace(/'/g, '\\\'')}')" title="Rename">📝</button>
+        <button class="file-action-btn rename-btn" title="Rename">📝</button>
         <span class="muted">${f.size || 0} B</span>
       </div>
     `;
@@ -188,6 +188,13 @@ function renderFileList() {
     nameSpan.addEventListener('click', async () => {
       if (dirty && !confirm('Discard unsaved changes?')) return;
       await selectFile(f.path);
+    });
+    
+    // Add click handler to rename button with proper closure
+    const renameBtn = el.querySelector('.rename-btn');
+    renameBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent file selection
+      showRenameModal(f.path);
     });
     
     fileListEl.appendChild(el);
@@ -246,8 +253,8 @@ function executeCustomButtonCode(code) {
   }
 }
 
-// Global functions for onclick handlers
-window.showRenameModal = (filename) => {
+// Global functions for onclick handlers - Remove showRenameModal from window since we're not using onclick anymore
+function showRenameModal(filename) {
   // Add validation to ensure filename is valid
   if (!filename || typeof filename !== 'string') {
     console.error('Invalid filename provided to showRenameModal:', filename);
@@ -255,12 +262,13 @@ window.showRenameModal = (filename) => {
     return;
   }
   
+  console.log('showRenameModal called with filename:', filename);
   fileToRename = filename;
   if (currentFilenameEl) currentFilenameEl.textContent = filename;
   if (renameFileNameInput) renameFileNameInput.value = filename;
   if (renameFileModal) renameFileModal.classList.add('show');
   if (renameFileNameInput) renameFileNameInput.focus();
-};
+}
 
 window.removeCustomButton = (index) => {
   customButtons.splice(index, 1);
