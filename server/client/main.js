@@ -190,11 +190,17 @@ function renderFileList() {
       await selectFile(f.path);
     });
     
-    // Add click handler to rename button with proper closure
+    // FIXED: Add click handler to rename button with proper closure and validation
     const renameBtn = el.querySelector('.rename-btn');
     renameBtn.addEventListener('click', (e) => {
       e.stopPropagation(); // Prevent file selection
-      showRenameModal(f.path);
+      console.log('Rename button clicked for file:', f.path); // Debug log
+      if (f.path && typeof f.path === 'string') {
+        showRenameModal(f.path);
+      } else {
+        console.error('Invalid file path for rename:', f.path);
+        alert('Error: Invalid file selected for renaming');
+      }
     });
     
     fileListEl.appendChild(el);
@@ -253,21 +259,32 @@ function executeCustomButtonCode(code) {
   }
 }
 
-// Global functions for onclick handlers - Remove showRenameModal from window since we're not using onclick anymore
+// FIXED: Enhanced showRenameModal function with better validation
 function showRenameModal(filename) {
-  // Add validation to ensure filename is valid
-  if (!filename || typeof filename !== 'string') {
+  console.log('showRenameModal called with:', filename, typeof filename); // Debug log
+  
+  // Enhanced validation
+  if (!filename || typeof filename !== 'string' || filename.trim() === '') {
     console.error('Invalid filename provided to showRenameModal:', filename);
-    alert('Invalid file selected for renaming');
+    alert('Error: Invalid file selected for renaming');
     return;
   }
   
-  console.log('showRenameModal called with filename:', filename);
+  // Verify the file exists in our files array
+  const fileExists = files.some(f => f.path === filename);
+  if (!fileExists) {
+    console.error('File not found in files array:', filename);
+    alert('Error: File not found');
+    return;
+  }
+  
   fileToRename = filename;
   if (currentFilenameEl) currentFilenameEl.textContent = filename;
   if (renameFileNameInput) renameFileNameInput.value = filename;
   if (renameFileModal) renameFileModal.classList.add('show');
   if (renameFileNameInput) renameFileNameInput.focus();
+  
+  console.log('Rename modal opened for file:', fileToRename); // Debug log
 }
 
 window.removeCustomButton = (index) => {
@@ -278,6 +295,13 @@ window.removeCustomButton = (index) => {
 };
 
 async function selectFile(path) {
+  // FIXED: Add validation for path parameter
+  if (!path || typeof path !== 'string' || path.trim() === '') {
+    console.error('Invalid path provided to selectFile:', path);
+    setStatus('Error: Invalid file path');
+    return;
+  }
+  
   try {
     const content = await api(`/file?path=${encodeURIComponent(path)}`);
     activePath = path;
@@ -346,6 +370,7 @@ function hideRenameModal() {
   if (!renameFileModal) return;
   renameFileModal.classList.remove('show');
   fileToRename = null;
+  console.log('Rename modal closed, fileToRename reset'); // Debug log
 }
 
 function showCustomButtonModal() {
@@ -420,21 +445,28 @@ async function createNewFile() {
 
 async function renameFile() {
   try {
-    // Add comprehensive validation
-    if (!renameFileNameInput || !fileToRename) {
-      console.error('Rename operation failed - missing elements:', {
-        renameFileNameInput: !!renameFileNameInput,
-        fileToRename: fileToRename
-      });
-      alert('Unable to rename file - please try again');
+    console.log('renameFile called, fileToRename:', fileToRename); // Debug log
+    
+    // FIXED: Enhanced validation with better error messages
+    if (!renameFileNameInput) {
+      console.error('renameFileNameInput element not found');
+      alert('Error: Unable to rename file - please try again');
       hideRenameModal();
       return;
     }
     
-    // Validate fileToRename is a valid string
-    if (typeof fileToRename !== 'string' || fileToRename.trim() === '') {
+    if (!fileToRename || typeof fileToRename !== 'string' || fileToRename.trim() === '') {
       console.error('Invalid fileToRename value:', fileToRename);
-      alert('Invalid file selected for renaming');
+      alert('Error: No file selected for renaming');
+      hideRenameModal();
+      return;
+    }
+    
+    // Verify the file still exists in our files array
+    const fileExists = files.some(f => f.path === fileToRename);
+    if (!fileExists) {
+      console.error('File to rename no longer exists:', fileToRename);
+      alert('Error: File no longer exists');
       hideRenameModal();
       return;
     }
@@ -451,14 +483,14 @@ async function renameFile() {
     }
     
     if (files.some(f => f.path === newName)) {
-      alert('File already exists!');
+      alert('A file with that name already exists!');
       return;
     }
     
     hideRenameModal();
     setStatus('Renaming file...');
     
-    console.log('Attempting to rename file:', fileToRename, 'to:', newName);
+    console.log('Attempting to rename file from:', fileToRename, 'to:', newName);
     
     // Get current content
     const content = await api(`/file?path=${encodeURIComponent(fileToRename)}`);
@@ -489,12 +521,14 @@ async function renameFile() {
     await loadFiles();
     await selectFile(newName);
     setStatus(`Renamed ${oldFileName} to ${newName}`);
+    console.log('File renamed successfully'); // Debug log
   } catch (err) {
     console.error('Error renaming file:', err);
     alert(`Error renaming file: ${err.message}`);
     setStatus('Error renaming file');
     // Reset fileToRename on error
     fileToRename = null;
+    hideRenameModal();
   }
 }
 
