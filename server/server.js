@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
 import { exec as execCb } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
@@ -21,13 +20,15 @@ const allowed = allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowed.length === 0 || allowed.includes(origin)), credentials: true }));
 
 // Serve client (after build) from ../client/dist
-const clientDist = join(__dirname, "client", "dist");
+const clientDist = join(__dirname, 'client', 'dist');
 if (await fs.pathExists(clientDist)) {
   app.use(express.static(clientDist));
 }
 
 const TEMP_ROOT = join(__dirname, 'temp_files');
+const USER_FILES = join(__dirname, 'user_files'); // Persistent user files
 await fs.ensureDir(TEMP_ROOT);
+await fs.ensureDir(USER_FILES);
 
 const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS || 10000);
 
@@ -113,13 +114,109 @@ async function ensureToolchain(lang) {
   }
 }
 
+// File management API endpoints
+
+// GET /api/files - List all files
+app.get('/api/files', async (req, res) => {
+  try {
+    const files = [];
+    const fileNames = await fs.readdir(USER_FILES);
+    
+    for (const fileName of fileNames) {
+      const filePath = join(USER_FILES, fileName);
+      const stats = await fs.stat(filePath);
+      if (stats.isFile()) {
+        files.push({
+          path: fileName,
+          size: stats.size
+        });
+      }
+    }
+    
+    // Create a default file if none exist
+    if (files.length === 0) {
+      const defaultContent = `console.log("Hello, CodeRunner!");`;
+      await fs.writeFile(join(USER_FILES, 'main.js'), defaultContent);
+      files.push({ path: 'main.js', size: defaultContent.length });
+    }
+    
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/file?path=filename - Get file content
+app.get('/api/file', async (req, res) => {
+  try {
+    const { path } = req.query;
+    if (!path) {
+      return res.status(400).send('Path parameter required');
+    }
+    
+    const filePath = join(USER_FILES, path);
+    const content = await fs.readFile(filePath, 'utf8');
+    res.send(content);
+  } catch (err) {
+    res.status(404).send('File not found');
+  }
+});
+
+// POST /api/file - Create new file
+app.post('/api/file', async (req, res) => {
+  try {
+    const { path, content = '' } = req.body;
+    if (!path) {
+      return res.status(400).json({ error: 'Path required' });
+    }
+    
+    const filePath = join(USER_FILES, path);
+    await fs.writeFile(filePath, content, 'utf8');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/file - Update file content
+app.put('/api/file', async (req, res) => {
+  try {
+    const { path, content } = req.body;
+    if (!path) {
+      return res.status(400).json({ error: 'Path required' });
+    }
+    
+    const filePath = join(USER_FILES, path);
+    await fs.writeFile(filePath, content, 'utf8');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/file?path=filename - Delete file
+app.delete('/api/file', async (req, res) => {
+  try {
+    const { path } = req.query;
+    if (!path) {
+      return res.status(400).send('Path parameter required');
+    }
+    
+    const filePath = join(USER_FILES, path);
+    await fs.remove(filePath);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// POST /api/run { language?, flags?, code?, files?: [{name, content}] }
+// POST /api/run - Updated to work with file system and inline code
 app.post('/api/run', async (req, res) => {
-  const { language: langIn, flags = '', code, files = [] } = req.body || {};
+  const { language: langIn, flags = '', entry, code, files = [] } = req.body || {};
 
   // Create temp working dir
   const workdir = join(TEMP_ROOT, uuidv4());
@@ -129,7 +226,17 @@ app.post('/api/run', async (req, res) => {
   const createdFiles = [];
 
   try {
-    // Write provided files
+    // If entry file specified, copy from user files
+    if (entry) {
+      const sourceFile = join(USER_FILES, entry);
+      const destFile = join(workdir, entry);
+      const content = await fs.readFile(sourceFile, 'utf8');
+      await fs.writeFile(destFile, content, 'utf8');
+      createdFiles.push(destFile);
+      if (!language) language = detectLanguageFromFilename(entry);
+    }
+
+    // Write any additional provided files
     for (const f of files) {
       const filepath = join(workdir, f.name);
       await fs.ensureDir(dirname(filepath));
@@ -155,11 +262,15 @@ app.post('/api/run', async (req, res) => {
 
     const toolchainOk = await ensureToolchain(language);
     if (!toolchainOk) {
-      return res.status(400).json({ stdout: '', stderr: `Missing toolchain for ${language}. Install the required compiler/interpreter on Railway or limit to supported languages.` });
+      return res.status(200).json({ 
+        stdout: '', 
+        stderr: `Missing toolchain for ${language}. Install the required compiler/interpreter.`,
+        error: `Toolchain not available for ${language}`
+      });
     }
 
     const outputName = 'program.out';
-    const sources = createdFiles.map(p => p.replaceAll(' ', '\\ ')).join(' ');
+    const sources = createdFiles.map(p => p.replace(/ /g, '\\ ')).join(' ');
 
     let runCmd;
     if (info.compile) {
@@ -168,22 +279,38 @@ app.post('/api/run', async (req, res) => {
         .replace('{output}', outputName)
         .replace('{flags}', flags || '');
 
-      const { stdout: cOut, stderr: cErr } = await exec(compileCmd, { cwd: workdir, timeout: EXEC_TIMEOUT_MS, maxBuffer: 2 * 1024 * 1024 });
+      const { stdout: cOut, stderr: cErr } = await exec(compileCmd, { 
+        cwd: workdir, 
+        timeout: EXEC_TIMEOUT_MS, 
+        maxBuffer: 2 * 1024 * 1024 
+      });
+      
       if (cErr && cErr.trim()) {
-        // If gcc/g++ emits warnings to stderr but exits 0, include them in response
-        // We proceed; non-zero exit throws from exec
+        // Compilation warnings/errors
+        if (cErr.toLowerCase().includes('error')) {
+          return res.json({ stdout: cOut || '', stderr: cErr, error: 'Compilation failed' });
+        }
       }
       runCmd = info.run.replace('{output}', outputName);
     } else {
       runCmd = info.run.replace('{sources}', sources);
     }
 
-    const { stdout, stderr } = await exec(runCmd, { cwd: workdir, timeout: EXEC_TIMEOUT_MS, maxBuffer: 2 * 1024 * 1024, shell: '/bin/bash' });
+    const { stdout, stderr } = await exec(runCmd, { 
+      cwd: workdir, 
+      timeout: EXEC_TIMEOUT_MS, 
+      maxBuffer: 2 * 1024 * 1024, 
+      shell: '/bin/bash' 
+    });
 
     res.json({ stdout, stderr });
   } catch (err) {
     const msg = err.killed && err.signal === 'SIGTERM' ? 'Execution timed out' : (err.stderr || err.message || String(err));
-    res.status(200).json({ stdout: err.stdout || '', stderr: msg });
+    res.status(200).json({ 
+      stdout: err.stdout || '', 
+      stderr: msg,
+      error: err.message || 'Runtime error'
+    });
   } finally {
     // Cleanup
     try { await fs.remove(workdir); } catch {}
@@ -197,13 +324,6 @@ app.get('*', async (req, res) => {
   } else {
     res.status(404).send('Not built yet.');
   }
-});
-
-// Serve frontend build
-app.use(express.static(path.join(__dirname, "client/dist")));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "client/dist/index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
