@@ -141,11 +141,25 @@ async function loadFiles() {
   try {
     setStatus('Loading files…');
     const result = await api('/files');
+    console.log('API returned files:', result); // Debug log
+    
     files = Array.isArray(result) ? result : [];
+    
+    // Validate each file object
+    files = files.filter(f => {
+      if (!f || typeof f.path !== 'string' || f.path.trim() === '') {
+        console.warn('Filtering out invalid file:', f);
+        return false;
+      }
+      return true;
+    });
+    
+    console.log('Validated files:', files); // Debug log
     renderFileList();
     setStatus('Ready');
     
     if (!activePath && files.length > 0) {
+      console.log('Auto-selecting first file:', files[0].path);
       await selectFile(files[0].path);
     }
   } catch (err) {
@@ -186,8 +200,16 @@ function renderFileList() {
     // Add click handler to file name area only
     const nameSpan = el.querySelector('.file-name');
     nameSpan.addEventListener('click', async () => {
+      console.log('File clicked:', f.path, 'type:', typeof f.path); // Debug log
       if (dirty && !confirm('Discard unsaved changes?')) return;
-      await selectFile(f.path);
+      
+      // Additional validation before selecting file
+      if (f.path && typeof f.path === 'string' && f.path.trim() !== '') {
+        await selectFile(f.path);
+      } else {
+        console.error('Invalid file path on click:', f.path);
+        alert('Error: Invalid file selected');
+      }
     });
     
     // FIXED: Add click handler to rename button with proper closure and validation
@@ -250,9 +272,34 @@ function renderCustomButtonSettings() {
 
 function executeCustomButtonCode(code) {
   try {
-    // Create a function with available context
-    const func = new Function('files', 'activePath', 'selectFile', 'saveActive', 'println', 'api', 'setStatus', code);
-    func(files, activePath, selectFile, saveActive, println, api, setStatus);
+    // ENHANCED: Add validation to context variables
+    console.log('Executing custom button with context:', {
+      filesCount: files?.length || 0,
+      activePath: activePath,
+      activePathType: typeof activePath
+    });
+    
+    // Create safer wrapper functions
+    const safeSelectFile = (path) => {
+      console.log('Custom button calling selectFile with:', JSON.stringify(path));
+      if (path === null || path === undefined || path === '') {
+        println('Error: Invalid file path provided to selectFile');
+        return Promise.reject(new Error('Invalid file path'));
+      }
+      return selectFile(path);
+    };
+    
+    const safeSaveActive = () => {
+      console.log('Custom button calling saveActive with activePath:', activePath);
+      return saveActive();
+    };
+    
+    // Create a function with available context and safer wrappers
+    const func = new Function(
+      'files', 'activePath', 'selectFile', 'saveActive', 'println', 'api', 'setStatus', 
+      code
+    );
+    func(files, activePath, safeSelectFile, safeSaveActive, println, api, setStatus);
   } catch (err) {
     println(`Custom button error: ${err.message}`);
     console.error('Custom button execution error:', err);
@@ -295,14 +342,39 @@ window.removeCustomButton = (index) => {
 };
 
 async function selectFile(path) {
-  // FIXED: Add validation for path parameter
-  if (!path || typeof path !== 'string' || path.trim() === '') {
-    console.error('Invalid path provided to selectFile:', path);
-    setStatus('Error: Invalid file path');
+  // ENHANCED: Add comprehensive validation and debugging
+  console.log('selectFile called with:', JSON.stringify(path), 'type:', typeof path);
+  
+  if (path === null) {
+    console.error('selectFile received null path');
+    setStatus('Error: No file selected (null)');
+    alert('Error: No file selected');
+    return;
+  }
+  
+  if (path === undefined) {
+    console.error('selectFile received undefined path');
+    setStatus('Error: No file selected (undefined)');
+    alert('Error: No file selected');
+    return;
+  }
+  
+  if (typeof path !== 'string') {
+    console.error('selectFile received non-string path:', path, 'type:', typeof path);
+    setStatus('Error: Invalid file path type');
+    alert('Error: Invalid file path');
+    return;
+  }
+  
+  if (path.trim() === '') {
+    console.error('selectFile received empty string path');
+    setStatus('Error: Empty file path');
+    alert('Error: Empty file path');
     return;
   }
   
   try {
+    console.log('Attempting to load file:', path);
     const content = await api(`/file?path=${encodeURIComponent(path)}`);
     activePath = path;
     if (codeEl) codeEl.value = content || '';
@@ -315,6 +387,7 @@ async function selectFile(path) {
     }
     
     setStatus(`Loaded ${path}`);
+    console.log('File loaded successfully:', path);
   } catch (err) {
     console.error('Error selecting file:', err);
     setStatus('Error loading file');
