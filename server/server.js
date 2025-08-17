@@ -11,52 +11,62 @@ const exec = util.promisify(execCb);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+console.log('🚀 Starting Enhanced CodeRunner Server...');
+
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 
 // Enhanced CORS with better error handling
-const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
-const allowed = allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean);
-
 app.use(cors({ 
-  origin: (origin, cb) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return cb(null, true);
-    
-    // Allow all origins if no specific origins are set (development mode)
-    if (allowed.length === 0) return cb(null, true);
-    
-    // Check if origin is in allowed list
-    if (allowed.includes(origin)) return cb(null, true);
-    
-    console.warn(`CORS: Rejected origin ${origin}`);
-    cb(new Error('Not allowed by CORS'));
-  }, 
+  origin: true, // Allow all origins in development
   credentials: true 
 }));
 
-// Static file serving
-const clientDist = join(__dirname, 'client', 'dist');
-
-if (await fs.pathExists(clientDist)) {
-  app.use(express.static(clientDist, {
-    maxAge: '1h',
-    etag: true,
-    lastModified: true
-  }));
-  console.log(`✅ Serving client from ${clientDist}`);
-} else {
-  console.warn(`⚠️ Client dist folder not found at ${clientDist}`);
-}
-
-// Directory setup
+// Directory setup - FIXED: await in top-level
 const TEMP_ROOT = join(__dirname, 'temp_files');
 const USER_FILES = join(__dirname, 'user_files');
 const BACKUP_DIR = join(__dirname, 'backups');
 
-await fs.ensureDir(TEMP_ROOT);
-await fs.ensureDir(USER_FILES);
-await fs.ensureDir(BACKUP_DIR);
+// Initialize directories
+async function initializeDirectories() {
+  try {
+    await fs.ensureDir(TEMP_ROOT);
+    await fs.ensureDir(USER_FILES);
+    await fs.ensureDir(BACKUP_DIR);
+    console.log('✅ Directories initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize directories:', error);
+    process.exit(1);
+  }
+}
+
+// Static file serving - FIXED: proper async handling
+async function setupStaticServing() {
+  const clientDist = join(__dirname, 'client', 'dist');
+  const clientSrc = join(__dirname, 'client');
+
+  try {
+    // Try to serve built client first, then fallback to source
+    if (await fs.pathExists(clientDist)) {
+      app.use(express.static(clientDist, {
+        maxAge: '1h',
+        etag: true,
+        lastModified: true
+      }));
+      console.log(`✅ Serving client from ${clientDist}`);
+    } else if (await fs.pathExists(clientSrc)) {
+      app.use(express.static(clientSrc, {
+        maxAge: '0', // No caching for development
+        etag: false
+      }));
+      console.log(`⚠️ Serving client from source: ${clientSrc}`);
+    } else {
+      console.warn(`⚠️ No client files found. Please build the client first.`);
+    }
+  } catch (error) {
+    console.error('❌ Error setting up static serving:', error);
+  }
+}
 
 const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS || 15000);
 const MAX_FILE_SIZE = Number(process.env.MAX_FILE_SIZE || 1024 * 1024);
@@ -199,35 +209,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple rate limiting
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 100;
-
-app.use('/api', (req, res, next) => {
-  const ip = req.ip || req.connection.remoteAddress || 'unknown';
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT_WINDOW;
-  
-  if (!rateLimitMap.has(ip)) {
-    rateLimitMap.set(ip, []);
-  }
-  
-  const requests = rateLimitMap.get(ip);
-  const recentRequests = requests.filter(timestamp => timestamp > windowStart);
-  
-  if (recentRequests.length >= MAX_REQUESTS_PER_WINDOW) {
-    return res.status(429).json({ 
-      error: 'Rate limit exceeded. Please slow down your requests.' 
-    });
-  }
-  
-  recentRequests.push(now);
-  rateLimitMap.set(ip, recentRequests);
-  
-  next();
-});
-
 // API ENDPOINTS
 
 // GET /api/files - List all files
@@ -236,8 +217,6 @@ app.get('/api/files', async (req, res) => {
     console.log('📁 Loading files...');
     const files = [];
     
-    // Ensure directory exists
-    await fs.ensureDir(USER_FILES);
     const fileNames = await fs.readdir(USER_FILES);
     
     for (const fileName of fileNames) {
@@ -274,8 +253,10 @@ console.log("Ready to code with amazing customizations!");
 // Try these features:
 // • Click the ⚙️ settings to customize themes
 // • Create custom action buttons  
-// • Drag and drop files
 // • Use keyboard shortcuts (Ctrl/Cmd+S to save)
+// • Test different programming languages
+
+// This file was automatically created to get you started!
 `;
       
       try {
@@ -287,6 +268,7 @@ console.log("Ready to code with amazing customizations!");
           language: 'javascript',
           description: 'JavaScript (Node.js)'
         });
+        console.log('✅ Welcome file created');
       } catch (createError) {
         console.error('Failed to create welcome file:', createError);
       }
@@ -304,6 +286,11 @@ console.log("Ready to code with amazing customizations!");
 app.get('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
+    
+    if (!path) {
+      return res.status(400).json({ error: 'Path parameter is required' });
+    }
+    
     console.log(`📄 Reading file: ${path}`);
     
     const validation = validatePath(path);
@@ -328,20 +315,11 @@ app.get('/api/file', async (req, res) => {
     const content = await fs.readFile(filePath, 'utf8');
     console.log(`✅ File read successfully: ${path} (${content.length} chars)`);
     
-    // Add metadata headers
-    res.set({
-      'X-File-Size': stats.size.toString(),
-      'X-File-Modified': stats.mtime.toISOString(),
-      'X-File-Language': detectLanguageFromFilename(path) || 'text'
-    });
-    
     res.send(content);
   } catch (error) {
     console.error('❌ Error reading file:', error);
     if (error.code === 'ENOENT') {
       res.status(404).json({ error: 'File not found' });
-    } else if (error.code === 'EACCES') {
-      res.status(403).json({ error: 'File access denied' });
     } else {
       res.status(500).json({ error: `Failed to read file: ${error.message}` });
     }
@@ -352,6 +330,11 @@ app.get('/api/file', async (req, res) => {
 app.post('/api/file', async (req, res) => {
   try {
     const { path, content = '' } = req.body;
+    
+    if (!path) {
+      return res.status(400).json({ error: 'Path is required' });
+    }
+    
     console.log(`📝 Creating file: ${path}`);
     
     const validation = validatePath(path);
@@ -371,22 +354,13 @@ app.post('/api/file', async (req, res) => {
       return res.status(409).json({ error: 'File already exists' });
     }
     
-    // Create backup if needed
-    await createBackup(path, content);
-    
     await fs.writeFile(filePath, content, 'utf8');
     
     console.log(`✅ File created: ${path} (${content.length} bytes)`);
     res.json({ success: true, message: `File '${path}' created successfully` });
   } catch (error) {
     console.error('❌ Error creating file:', error);
-    if (error.code === 'ENOSPC') {
-      res.status(507).json({ error: 'Insufficient storage space' });
-    } else if (error.code === 'EACCES') {
-      res.status(403).json({ error: 'Permission denied' });
-    } else {
-      res.status(500).json({ error: `Failed to create file: ${error.message}` });
-    }
+    res.status(500).json({ error: `Failed to create file: ${error.message}` });
   }
 });
 
@@ -394,6 +368,11 @@ app.post('/api/file', async (req, res) => {
 app.put('/api/file', async (req, res) => {
   try {
     const { path, content } = req.body;
+    
+    if (!path) {
+      return res.status(400).json({ error: 'Path is required' });
+    }
+    
     console.log(`💾 Updating file: ${path}`);
     
     const validation = validatePath(path);
@@ -411,32 +390,14 @@ app.put('/api/file', async (req, res) => {
     
     const filePath = join(USER_FILES, path);
     
-    // Check if file exists
-    if (!(await fs.pathExists(filePath))) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    
-    // Create backup before modifying
-    try {
-      const oldContent = await fs.readFile(filePath, 'utf8');
-      await createBackup(path, oldContent);
-    } catch (backupError) {
-      console.warn('Backup failed:', backupError.message);
-    }
-    
+    // Check if file exists (create if it doesn't)
     await fs.writeFile(filePath, content, 'utf8');
     
     console.log(`✅ File updated: ${path} (${content.length} bytes)`);
     res.json({ success: true, message: `File '${path}' updated successfully` });
   } catch (error) {
     console.error('❌ Error updating file:', error);
-    if (error.code === 'ENOSPC') {
-      res.status(507).json({ error: 'Insufficient storage space' });
-    } else if (error.code === 'EACCES') {
-      res.status(403).json({ error: 'Permission denied' });
-    } else {
-      res.status(500).json({ error: `Failed to update file: ${error.message}` });
-    }
+    res.status(500).json({ error: `Failed to update file: ${error.message}` });
   }
 });
 
@@ -444,6 +405,11 @@ app.put('/api/file', async (req, res) => {
 app.delete('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
+    
+    if (!path) {
+      return res.status(400).json({ error: 'Path parameter is required' });
+    }
+    
     console.log(`🗑️ Deleting file: ${path}`);
     
     const validation = validatePath(path);
@@ -458,53 +424,15 @@ app.delete('/api/file', async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
     
-    // Create backup before deleting
-    try {
-      const content = await fs.readFile(filePath, 'utf8');
-      await createBackup(path, content, 'deleted');
-    } catch (backupError) {
-      console.warn('Backup failed:', backupError.message);
-    }
-    
     await fs.remove(filePath);
     
     console.log(`✅ File deleted: ${path}`);
     res.json({ success: true, message: `File '${path}' deleted successfully` });
   } catch (error) {
     console.error('❌ Error deleting file:', error);
-    if (error.code === 'EACCES') {
-      res.status(403).json({ error: 'Permission denied' });
-    } else {
-      res.status(500).json({ error: `Failed to delete file: ${error.message}` });
-    }
+    res.status(500).json({ error: `Failed to delete file: ${error.message}` });
   }
 });
-
-// Backup system
-async function createBackup(filename, content, operation = 'backup') {
-  try {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupFilename = `${filename}.${operation}.${timestamp}.bak`;
-    const backupPath = join(BACKUP_DIR, backupFilename);
-    
-    await fs.writeFile(backupPath, content, 'utf8');
-    
-    // Clean old backups (keep only last 5 per file)
-    const backups = (await fs.readdir(BACKUP_DIR))
-      .filter(f => f.startsWith(filename))
-      .sort()
-      .reverse();
-    
-    if (backups.length > 5) {
-      const oldBackups = backups.slice(5);
-      for (const oldBackup of oldBackups) {
-        await fs.remove(join(BACKUP_DIR, oldBackup));
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to create backup:', error.message);
-  }
-}
 
 // GET /api/system/info - System information
 app.get('/api/system/info', async (req, res) => {
@@ -538,15 +466,17 @@ app.get('/api/system/info', async (req, res) => {
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
+    const userFilesList = await fs.readdir(USER_FILES).catch(() => []);
+    const tempFilesList = await fs.readdir(TEMP_ROOT).catch(() => []);
+    
     const stats = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       uptime: Math.round(process.uptime()),
       memory: process.memoryUsage(),
       directories: {
-        userFiles: (await fs.readdir(USER_FILES)).length,
-        tempFiles: (await fs.readdir(TEMP_ROOT)).length,
-        backups: (await fs.readdir(BACKUP_DIR)).length
+        userFiles: userFilesList.length,
+        tempFiles: tempFilesList.length
       }
     };
     
@@ -567,8 +497,7 @@ app.post('/api/run', async (req, res) => {
   // Create session directory
   const sessionId = uuidv4();
   const workdir = join(TEMP_ROOT, `session_${sessionId}`);
-  await fs.ensureDir(workdir);
-
+  
   let language = (langIn || '').toLowerCase() || null;
   const createdFiles = [];
   const startTime = Date.now();
@@ -576,6 +505,8 @@ app.post('/api/run', async (req, res) => {
   console.log(`🚀 [${sessionId}] Starting execution: language=${language}, entry=${entry}`);
 
   try {
+    await fs.ensureDir(workdir);
+
     // Handle entry file
     if (entry) {
       const validation = validatePath(entry);
@@ -596,25 +527,8 @@ app.post('/api/run', async (req, res) => {
       if (!language) language = detectLanguageFromFilename(entry);
     }
 
-    // Process additional files
-    for (const f of files) {
-      if (!f.name || f.content === undefined) continue;
-      
-      const validation = validatePath(f.name);
-      if (!validation.valid) {
-        console.warn(`Skipping invalid file: ${f.name} - ${validation.error}`);
-        continue;
-      }
-      
-      const filepath = join(workdir, f.name);
-      await fs.ensureDir(dirname(filepath));
-      await fs.writeFile(filepath, f.content, 'utf8');
-      createdFiles.push(filepath);
-      if (!language) language = detectLanguageFromFilename(f.name);
-    }
-
     // Handle inline code
-    if (code) {
+    if (code && !entry) {
       if (!language) throw new Error('Language required when using inline code');
       const ext = LANGUAGES[language]?.extension;
       if (!ext) throw new Error(`Unsupported language: ${language}`);
@@ -645,11 +559,12 @@ app.post('/api/run', async (req, res) => {
         .map(([lang, conf]) => `  • ${lang}: ${conf.description}`)
         .join('\n');
       
-      return res.status(200).json({ 
+      return res.json({ 
         stdout: '', 
         stderr: `❌ Missing toolchain for ${language}.\n\nSupported languages:\n${languageList}`,
         error: `Toolchain not available for ${language}`,
-        executionTime: Date.now() - startTime
+        executionTime: Date.now() - startTime,
+        success: false
       });
     }
 
@@ -673,22 +588,24 @@ app.post('/api/run', async (req, res) => {
         const { stdout: cOut, stderr: cErr } = await exec(compileCmd, { 
           cwd: workdir, 
           timeout: EXEC_TIMEOUT_MS,
-          maxBuffer: 2 * 1024 * 1024 // 2MB buffer
+          maxBuffer: 2 * 1024 * 1024
         });
         
         compileTime = Date.now() - compileStart;
         
+        // Check if compilation produced an executable
+        if (!(await fs.pathExists(join(workdir, outputName)))) {
+          return res.json({ 
+            stdout: cOut || '', 
+            stderr: `💥 Compilation failed:\n${cErr || 'No executable produced'}`, 
+            error: 'Compilation failed',
+            compileTime,
+            executionTime: Date.now() - startTime,
+            success: false
+          });
+        }
+
         if (cErr && cErr.trim()) {
-          // Check if compilation failed
-          if (cErr.toLowerCase().includes('error') && !(await fs.pathExists(join(workdir, outputName)))) {
-            return res.json({ 
-              stdout: cOut || '', 
-              stderr: `💥 Compilation failed:\n${cErr}`, 
-              error: 'Compilation failed',
-              compileTime,
-              executionTime: Date.now() - startTime
-            });
-          }
           console.log(`⚠️ [${sessionId}] Compilation warnings: ${cErr.substring(0, 200)}`);
         }
       } catch (compileError) {
@@ -697,7 +614,8 @@ app.post('/api/run', async (req, res) => {
           stderr: `💥 Compilation error:\n${compileError.message}`,
           error: 'Compilation failed',
           compileTime: Date.now() - compileStart,
-          executionTime: Date.now() - startTime
+          executionTime: Date.now() - startTime,
+          success: false
         });
       }
 
@@ -715,7 +633,6 @@ app.post('/api/run', async (req, res) => {
       maxBuffer: 2 * 1024 * 1024,
       env: {
         ...process.env,
-        // Security: Limit environment
         PATH: process.env.PATH,
         HOME: process.env.HOME,
         USER: process.env.USER
@@ -757,12 +674,13 @@ app.post('/api/run', async (req, res) => {
       errorMessage = error.stderr;
     }
 
-    res.status(200).json({ 
+    res.json({ 
       stdout: error.stdout || '', 
       stderr: `💥 ${errorType}:\n${errorMessage}`,
       error: errorType,
       executionTime,
-      language
+      language,
+      success: false
     });
   } finally {
     // Cleanup with delay
@@ -772,8 +690,6 @@ app.post('/api/run', async (req, res) => {
         console.log(`🧹 [${sessionId}] Cleanup completed`);
       } catch (cleanupErr) {
         console.warn(`⚠️ [${sessionId}] Cleanup failed:`, cleanupErr.message);
-        // Retry cleanup
-        setTimeout(() => fs.remove(workdir).catch(() => {}), 5000);
       }
     }, 1000);
   }
@@ -781,14 +697,10 @@ app.post('/api/run', async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err.message);
+  console.error('❌ Unhandled error:', err);
   
   if (err.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Request too large' });
-  }
-  
-  if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({ error: 'CORS policy violation' });
   }
   
   res.status(500).json({ 
@@ -799,63 +711,98 @@ app.use((err, req, res, next) => {
 
 // 404 handler - serve client for SPA routing
 app.get('*', async (req, res) => {
-  const indexPath = join(clientDist, 'index.html');
-  if (await fs.pathExists(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).json({ 
-      error: 'Not found',
-      message: 'Client not built. Run: npm run build in the client directory',
-      availableEndpoints: [
-        'GET /health',
-        'GET /api/files',
-        'GET /api/file?path=filename',
-        'POST /api/file',
-        'PUT /api/file',
-        'DELETE /api/file?path=filename',
-        'POST /api/run',
-        'GET /api/system/info'
-      ]
-    });
+  try {
+    const clientDist = join(__dirname, 'client', 'dist');
+    const clientSrc = join(__dirname, 'client');
+    
+    let indexPath;
+    if (await fs.pathExists(join(clientDist, 'index.html'))) {
+      indexPath = join(clientDist, 'index.html');
+    } else if (await fs.pathExists(join(clientSrc, 'index.html'))) {
+      indexPath = join(clientSrc, 'index.html');
+    }
+    
+    if (indexPath) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({ 
+        error: 'Not found',
+        message: 'Client not found. Please ensure client files are available.',
+        availableEndpoints: [
+          'GET /health',
+          'GET /api/files',
+          'GET /api/file?path=filename',
+          'POST /api/file',
+          'PUT /api/file',
+          'DELETE /api/file?path=filename',
+          'POST /api/run',
+          'GET /api/system/info'
+        ]
+      });
+    }
+  } catch (error) {
+    console.error('Error in 404 handler:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Server startup
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+// Initialize and start server
+async function startServer() {
+  try {
+    // Initialize directories first
+    await initializeDirectories();
+    
+    // Setup static file serving
+    await setupStaticServing();
+    
+    // Start the server
+    const PORT = process.env.PORT || 3000;
+    const HOST = process.env.HOST || '0.0.0.0';
 
-const server = app.listen(PORT, HOST, () => {
-  console.log(`🚀 Enhanced CodeRunner Server Started!`);
-  console.log(`📡 Server: http://${HOST}:${PORT}`);
-  console.log(`📁 Files: ${USER_FILES}`);
-  console.log(`🔧 Temp: ${TEMP_ROOT}`);
-  console.log(`💾 Backups: ${BACKUP_DIR}`);
-  
-  // Check toolchains on startup
-  setTimeout(async () => {
-    console.log('\n🔧 Checking available toolchains...');
-    for (const [lang, config] of Object.entries(LANGUAGES)) {
-      const available = await ensureToolchain(lang);
-      const status = available ? '✅' : '❌';
-      console.log(`   ${status} ${lang.padEnd(12)} - ${config.description}`);
-    }
-    console.log('');
-  }, 1000);
-});
+    const server = app.listen(PORT, HOST, () => {
+      console.log(`🚀 Enhanced CodeRunner Server Started!`);
+      console.log(`📡 Server: http://${HOST}:${PORT}`);
+      console.log(`📁 Files: ${USER_FILES}`);
+      console.log(`🔧 Temp: ${TEMP_ROOT}`);
+      
+      // Check toolchains on startup
+      setTimeout(async () => {
+        console.log('\n🔧 Checking available toolchains...');
+        for (const [lang, config] of Object.entries(LANGUAGES)) {
+          try {
+            const available = await ensureToolchain(lang);
+            const status = available ? '✅' : '❌';
+            console.log(`   ${status} ${lang.padEnd(12)} - ${config.description}`);
+          } catch (error) {
+            console.log(`   ❌ ${lang.padEnd(12)} - Error checking: ${error.message}`);
+          }
+        }
+        console.log('\n✅ Server ready for requests!');
+      }, 1000);
+    });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
-  });
-});
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('🛑 SIGTERM received, shutting down gracefully');
+      server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+      });
+    });
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
-  });
-});
+    process.on('SIGINT', () => {
+      console.log('🛑 SIGINT received, shutting down gracefully');
+      server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+      });
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
