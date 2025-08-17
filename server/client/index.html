@@ -308,6 +308,14 @@
         padding: 15px;
         background: #fef2f2;
       }
+      
+      /* FIXED: Disabled protected class - no more locks! */
+      .protected {
+        /* No longer blocks interaction or shows locks */
+      }
+      .protected::after {
+        /* No lock icon */
+      }
 
       /* Drag and drop */
       .drop-zone {
