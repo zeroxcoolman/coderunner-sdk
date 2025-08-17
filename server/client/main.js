@@ -44,7 +44,8 @@ const THEME_PRESETS = {
     'terminal-bg': '#0b0b0b',
     'terminal-text': '#e5e7eb',
     'border-radius': '8',
-    'shadow-intensity': '2'
+    'shadow-intensity': '2',
+    'terminal-opacity': '1'
   },
   dark: {
     'primary-color': '#f3f4f6',
@@ -56,7 +57,10 @@ const THEME_PRESETS = {
     'header-bg': '#374151',
     'sidebar-bg': '#374151',
     'footer-bg': '#374151',
-    'editor-bg': '#1f2937'
+    'editor-bg': '#1f2937',
+    'border-radius': '8',
+    'shadow-intensity': '2',
+    'terminal-opacity': '1'
   },
   retro: {
     'primary-color': '#f59e0b',
@@ -64,7 +68,10 @@ const THEME_PRESETS = {
     'background-color': '#fef3c7',
     'text-color': '#92400e',
     'terminal-bg': '#451a03',
-    'terminal-text': '#fbbf24'
+    'terminal-text': '#fbbf24',
+    'border-radius': '8',
+    'shadow-intensity': '2',
+    'terminal-opacity': '1'
   },
   neon: {
     'primary-color': '#ec4899',
@@ -72,7 +79,10 @@ const THEME_PRESETS = {
     'background-color': '#0f0f23',
     'text-color': '#06ffa5',
     'terminal-bg': '#000000',
-    'terminal-text': '#06ffa5'
+    'terminal-text': '#06ffa5',
+    'border-radius': '8',
+    'shadow-intensity': '2',
+    'terminal-opacity': '1'
   },
   nature: {
     'primary-color': '#059669',
@@ -80,7 +90,10 @@ const THEME_PRESETS = {
     'background-color': '#ecfdf5',
     'text-color': '#064e3b',
     'terminal-bg': '#14532d',
-    'terminal-text': '#bbf7d0'
+    'terminal-text': '#bbf7d0',
+    'border-radius': '8',
+    'shadow-intensity': '2',
+    'terminal-opacity': '1'
   },
   ocean: {
     'primary-color': '#0284c7',
@@ -88,7 +101,10 @@ const THEME_PRESETS = {
     'background-color': '#e0f2fe',
     'text-color': '#0c4a6e',
     'terminal-bg': '#164e63',
-    'terminal-text': '#a5f3fc'
+    'terminal-text': '#a5f3fc',
+    'border-radius': '8',
+    'shadow-intensity': '2',
+    'terminal-opacity': '1'
   }
 };
 
@@ -228,18 +244,39 @@ function saveTheme(theme) {
   }
 }
 
+// FIXED: Theme application with proper CSS variable setting
 function applyTheme(theme) {
   try {
     const root = document.documentElement;
+    
+    // First apply preset defaults if available
+    if (theme.preset && THEME_PRESETS[theme.preset]) {
+      const presetTheme = THEME_PRESETS[theme.preset];
+      Object.entries(presetTheme).forEach(([key, value]) => {
+        if (key === 'preset') return;
+        if (key.includes('radius') || key.includes('intensity')) {
+          root.style.setProperty(`--${key}`, `${value}px`);
+        } else if (key.includes('opacity')) {
+          root.style.setProperty(`--${key}`, value);
+        } else {
+          root.style.setProperty(`--${key}`, value);
+        }
+      });
+    }
+    
+    // Then apply any custom overrides
     Object.entries(theme).forEach(([key, value]) => {
       if (key === 'preset') return;
-      if (key.includes('radius') || key.includes('intensity') || key.includes('opacity')) {
-        root.style.setProperty(`--${key}`, key.includes('opacity') ? value : `${value}px`);
+      if (key.includes('radius') || key.includes('intensity')) {
+        root.style.setProperty(`--${key}`, `${value}px`);
+      } else if (key.includes('opacity')) {
+        root.style.setProperty(`--${key}`, value);
       } else {
         root.style.setProperty(`--${key}`, value);
       }
     });
-    console.log('Theme applied');
+    
+    console.log('Theme applied successfully');
   } catch (error) {
     console.error('Error applying theme:', error);
   }
@@ -303,11 +340,17 @@ function createParticle(x, y) {
   }
 }
 
-// Enhanced API with better error handling
+// FIXED: Enhanced API with better error handling and path validation
 async function api(path, opts = {}) {
   try {
-    if (!path || path.includes('null') || path.includes('undefined')) {
+    // FIXED: Better path validation
+    if (!path || typeof path !== 'string') {
       throw new Error('Invalid API path');
+    }
+    
+    // Don't make API calls during factory reset
+    if (path.includes('null') || path.includes('undefined')) {
+      throw new Error('Invalid API path contains null/undefined');
     }
     
     console.log(`API: ${opts.method || 'GET'} ${path}`);
@@ -318,8 +361,15 @@ async function api(path, opts = {}) {
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      let errorText;
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        const errorData = await response.json();
+        errorText = errorData.message || errorData.error || `HTTP ${response.status}`;
+      } else {
+        errorText = await response.text() || `HTTP ${response.status}`;
+      }
+      throw new Error(errorText);
     }
     
     const contentType = response.headers.get('content-type');
@@ -334,7 +384,7 @@ async function api(path, opts = {}) {
   }
 }
 
-// Enhanced file loading with better error handling
+// FIXED: Enhanced file loading with better error handling
 async function loadFiles() {
   try {
     setStatus('Loading files…');
@@ -355,6 +405,7 @@ async function loadFiles() {
     renderFileList();
     setStatus(`Loaded ${files.length} files`);
     
+    // Only auto-select if no active file and files exist
     if (!activePath && files.length > 0) {
       await selectFile(files[0].path);
     }
@@ -480,11 +531,16 @@ function renderCustomButtons() {
   }
 }
 
-// Enhanced file selection
+// FIXED: Enhanced file selection with better validation
 async function selectFile(path) {
   if (!path || typeof path !== 'string' || path.trim() === '') {
     console.error('selectFile: Invalid path provided:', path);
     setStatus('Error: Invalid file path');
+    return;
+  }
+  
+  // Avoid selecting the same file if already active
+  if (path === activePath && elements.code.value !== '') {
     return;
   }
   
@@ -663,71 +719,97 @@ function hideSettings() {
   elements.settingsPanel?.classList.remove('show');
 }
 
-// Enhanced theme management
+// FIXED: Enhanced theme management with immediate updates
 function updateThemeInputs() {
   try {
     const theme = JSON.parse(localStorage.getItem('theme') || '{}');
     
-    Object.entries(THEME_PRESETS.default).forEach(([key, defaultValue]) => {
+    // Get current theme or default
+    const currentThemeData = currentTheme && THEME_PRESETS[currentTheme] ? 
+      { ...THEME_PRESETS[currentTheme], ...theme } : 
+      { ...THEME_PRESETS.default, ...theme };
+    
+    // Update all inputs with current values
+    Object.entries(currentThemeData).forEach(([key, value]) => {
+      if (key === 'preset') return;
       const input = $(`#${key}`);
       if (input) {
-        input.value = theme[key] || defaultValue;
+        input.value = value;
       }
     });
     
-    // Update range displays
+    // Update range displays and add immediate event listeners
     const radiusSlider = $('#border-radius');
     const shadowSlider = $('#shadow-intensity');
     const opacitySlider = $('#terminal-opacity');
     
     if (radiusSlider) {
       const radiusValue = $('#radius-value');
-      if (radiusValue) radiusValue.textContent = radiusSlider.value + 'px';
-      radiusSlider.oninput = () => {
+      const updateRadius = () => {
         if (radiusValue) radiusValue.textContent = radiusSlider.value + 'px';
         updateThemeFromInputs();
       };
+      if (radiusValue) radiusValue.textContent = radiusSlider.value + 'px';
+      radiusSlider.oninput = updateRadius;
+      radiusSlider.onchange = updateRadius;
     }
     
     if (shadowSlider) {
       const shadowValue = $('#shadow-value');
-      if (shadowValue) shadowValue.textContent = shadowSlider.value;
-      shadowSlider.oninput = () => {
+      const updateShadow = () => {
         if (shadowValue) shadowValue.textContent = shadowSlider.value;
         updateThemeFromInputs();
       };
+      if (shadowValue) shadowValue.textContent = shadowSlider.value;
+      shadowSlider.oninput = updateShadow;
+      shadowSlider.onchange = updateShadow;
     }
     
     if (opacitySlider) {
       const opacityValue = $('#opacity-value');
-      if (opacityValue) opacityValue.textContent = Math.round(opacitySlider.value * 100) + '%';
-      opacitySlider.oninput = () => {
+      const updateOpacity = () => {
         if (opacityValue) opacityValue.textContent = Math.round(opacitySlider.value * 100) + '%';
         updateThemeFromInputs();
       };
+      if (opacityValue) opacityValue.textContent = Math.round(opacitySlider.value * 100) + '%';
+      opacitySlider.oninput = updateOpacity;
+      opacitySlider.onchange = updateOpacity;
     }
     
     // Update preset selection
     $$('.theme-preset').forEach(preset => {
       preset.classList.toggle('active', preset.dataset.theme === currentTheme);
     });
+    
+    console.log('Theme inputs updated successfully');
   } catch (error) {
     console.error('Error updating theme inputs:', error);
   }
 }
 
+// FIXED: Immediate theme updates
 function updateThemeFromInputs() {
   try {
     const theme = { preset: currentTheme };
     
-    ['primary-color', 'accent-color', 'background-color', 'text-color', 
-     'terminal-bg', 'terminal-text', 'border-radius', 'shadow-intensity', 'terminal-opacity'].forEach(key => {
+    // Get all theme-related inputs
+    const themeInputs = [
+      'primary-color', 'accent-color', 'background-color', 'text-color', 
+      'terminal-bg', 'terminal-text', 'border-radius', 'shadow-intensity', 'terminal-opacity'
+    ];
+    
+    themeInputs.forEach(key => {
       const input = $(`#${key}`);
-      if (input) theme[key] = input.value;
+      if (input && input.value !== undefined) {
+        theme[key] = input.value;
+      }
     });
     
+    // Apply theme immediately
     applyTheme(theme);
     saveTheme(theme);
+    
+    console.log('Theme updated from inputs');
   } catch (error) {
     console.error('Error updating theme:', error);
   }
@@ -1058,29 +1140,45 @@ function showCustomButtonModal() {
   if (elements.customButtonName) elements.customButtonName.focus();
 }
 
+// FIXED: Factory reset without API calls
 function factoryReset() {
   try {
+    console.log('🏭 Starting factory reset...');
+    
+    // Reset custom buttons
     customButtons = [];
+    
+    // Reset theme to default
+    currentTheme = 'default';
     const defaultTheme = { preset: 'default', ...THEME_PRESETS.default };
     
+    // Save to localStorage
     saveCustomButtons();
     saveTheme(defaultTheme);
+    
+    // Apply theme immediately
     applyTheme(defaultTheme);
     
     // Clear custom CSS
     const customStylesEl = $('#custom-styles');
     if (customStylesEl) customStylesEl.textContent = '';
     
+    // Re-render UI components
     renderCustomButtons();
     renderCustomButtonSettings();
     updateThemeInputs();
+    
+    // Close modal
     hideFactoryResetModal();
     
     setStatus('🏭 Factory reset completed');
     println('🏭 Factory reset completed! All customizations restored to defaults.');
+    
+    console.log('✅ Factory reset completed successfully');
   } catch (error) {
     console.error('Error during factory reset:', error);
     alert('Error during factory reset');
+    setStatus('Error during reset');
   }
 }
 
@@ -1092,7 +1190,7 @@ function hideFactoryResetModal() {
   elements.factoryResetModal?.classList.remove('show');
 }
 
-// FIXED: Enhanced event listener setup with proper element checking
+// FIXED: Enhanced event listener setup with immediate theme updates
 function setupEventListeners() {
   console.log('🔧 Setting up event listeners...');
   
@@ -1155,7 +1253,7 @@ function setupEventListeners() {
     elements.factoryResetCancel?.addEventListener('click', hideFactoryResetModal);
     elements.factoryResetConfirm?.addEventListener('click', factoryReset);
 
-    // Theme controls
+    // FIXED: Theme controls with immediate updates
     $('.theme-preset').forEach(preset => {
       preset.addEventListener('click', () => {
         currentTheme = preset.dataset.theme;
@@ -1163,14 +1261,22 @@ function setupEventListeners() {
         applyTheme(theme);
         saveTheme(theme);
         updateThemeInputs();
+        
+        // Update active state immediately
+        $('.theme-preset').forEach(p => p.classList.remove('active'));
+        preset.classList.add('active');
       });
     });
 
-    // Color inputs
+    // FIXED: Color inputs with immediate updates
     ['primary-color', 'accent-color', 'background-color', 'text-color', 
      'terminal-bg', 'terminal-text'].forEach(id => {
       const input = $(`#${id}`);
-      input?.addEventListener('change', updateThemeFromInputs);
+      if (input) {
+        const updateTheme = () => updateThemeFromInputs();
+        input.addEventListener('change', updateTheme);
+        input.addEventListener('input', updateTheme); // For real-time updates
+      }
     });
 
     // Apply custom CSS
@@ -1233,7 +1339,7 @@ function setupEventListeners() {
       }
     });
 
-    // FIXED: Enhanced run button with proper element checking
+    // FIXED: Enhanced run button with better error handling
     elements.runBtn?.addEventListener('click', async (e) => {
       try {
         if ($('#particle-effects')?.checked) {
@@ -1244,6 +1350,10 @@ function setupEventListeners() {
           alert('No file selected to run');
           return;
         }
+        
+        // Disable run button during execution
+        elements.runBtn.disabled = true;
+        elements.runBtn.textContent = 'Running...';
         
         // Save before running
         await saveActive();
@@ -1294,6 +1404,10 @@ function setupEventListeners() {
         console.error('Error running code:', error);
         println(`❌ Runtime Error: ${error.message}`);
         setStatus('Error');
+      } finally {
+        // Re-enable run button
+        elements.runBtn.disabled = false;
+        elements.runBtn.textContent = 'Run ▶';
       }
     });
 
