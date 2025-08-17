@@ -1,4 +1,3 @@
-// Enhanced CodeRunner with Advanced Customization - FIXED VERSION
 // Attempt to initialize Discord Embedded App SDK (non-fatal if not present in plain web dev)
 let discordSdk;
 (async () => {
@@ -12,19 +11,17 @@ let discordSdk;
   }
 })();
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
+// FIXED: Properly define utility functions
+function $(sel) {
+  return document.querySelector(sel);
+}
+
+function $$(sel) {
+  return document.querySelectorAll(sel);
+}
 
 // Global elements - ensuring they exist
-let fileListEl, codeEl, termEl, statusEl, langEl, flagsEl, runBtn;
-let newFileModal, newFileNameInput, modalCancel, modalCreate;
-let deleteFileModal, deleteFileName, deleteCancel, deleteConfirm;
-let renameFileModal, renameFileNameInput, currentFilenameEl, renameCancel, renameConfirm;
-let settingsPanel, settingsBtn, backToEditorBtn;
-let customButtonModal, customButtonName, customButtonCode, customButtonCancel, customButtonSave;
-let editCustomButtonModal, editButtonName, editButtonCode, editButtonCancel, editButtonSave;
-let factoryResetModal, factoryResetCancel, factoryResetConfirm;
-let customFileActions, customButtonsList, addCustomButtonBtn, buttonDropZone;
+let elements = {};
 
 // Application state
 let files = [];
@@ -95,69 +92,78 @@ const THEME_PRESETS = {
   }
 };
 
-// Initialize elements with error checking
+// FIXED: Initialize elements with proper error checking and waiting for DOM
 function initializeElements() {
+  console.log('🔧 Initializing elements...');
+  
   try {
     // Core elements
-    fileListEl = $('#file-list');
-    codeEl = $('#codearea');
-    termEl = $('#terminal');
-    statusEl = $('#status');
-    langEl = $('#language');
-    flagsEl = $('#flags');
-    runBtn = $('#run');
+    elements.fileList = $('#file-list');
+    elements.code = $('#codearea');
+    elements.terminal = $('#terminal');
+    elements.status = $('#status');
+    elements.language = $('#language');
+    elements.flags = $('#flags');
+    elements.runBtn = $('#run');
+    
+    // Buttons
+    elements.newFileBtn = $('#new-file');
+    elements.deleteFileBtn = $('#delete-file');
+    elements.settingsBtn = $('#settings-btn');
+    elements.backToEditorBtn = $('#back-to-editor');
     
     // Modal elements
-    newFileModal = $('#new-file-modal');
-    newFileNameInput = $('#new-file-name');
-    modalCancel = $('#modal-cancel');
-    modalCreate = $('#modal-create');
+    elements.newFileModal = $('#new-file-modal');
+    elements.newFileNameInput = $('#new-file-name');
+    elements.modalCancel = $('#modal-cancel');
+    elements.modalCreate = $('#modal-create');
     
-    deleteFileModal = $('#delete-file-modal');
-    deleteFileName = $('#delete-file-name');
-    deleteCancel = $('#delete-cancel');
-    deleteConfirm = $('#delete-confirm');
+    elements.deleteFileModal = $('#delete-file-modal');
+    elements.deleteFileName = $('#delete-file-name');
+    elements.deleteCancel = $('#delete-cancel');
+    elements.deleteConfirm = $('#delete-confirm');
     
-    renameFileModal = $('#rename-file-modal');
-    renameFileNameInput = $('#rename-file-name');
-    currentFilenameEl = $('#current-filename');
-    renameCancel = $('#rename-cancel');
-    renameConfirm = $('#rename-confirm');
+    elements.renameFileModal = $('#rename-file-modal');
+    elements.renameFileNameInput = $('#rename-file-name');
+    elements.currentFilename = $('#current-filename');
+    elements.renameCancel = $('#rename-cancel');
+    elements.renameConfirm = $('#rename-confirm');
     
     // Settings elements
-    settingsPanel = $('#settings-panel');
-    settingsBtn = $('#settings-btn');
-    backToEditorBtn = $('#back-to-editor');
+    elements.settingsPanel = $('#settings-panel');
     
     // Custom button elements
-    customButtonModal = $('#custom-button-modal');
-    customButtonName = $('#custom-button-name');
-    customButtonCode = $('#custom-button-code');
-    customButtonCancel = $('#custom-button-cancel');
-    customButtonSave = $('#custom-button-save');
+    elements.customButtonModal = $('#custom-button-modal');
+    elements.customButtonName = $('#custom-button-name');
+    elements.customButtonCode = $('#custom-button-code');
+    elements.customButtonCancel = $('#custom-button-cancel');
+    elements.customButtonSave = $('#custom-button-save');
     
-    editCustomButtonModal = $('#edit-custom-button-modal');
-    editButtonName = $('#edit-button-name');
-    editButtonCode = $('#edit-button-code');
-    editButtonCancel = $('#edit-button-cancel');
-    editButtonSave = $('#edit-button-save');
+    elements.editCustomButtonModal = $('#edit-custom-button-modal');
+    elements.editButtonName = $('#edit-button-name');
+    elements.editButtonCode = $('#edit-button-code');
+    elements.editButtonCancel = $('#edit-button-cancel');
+    elements.editButtonSave = $('#edit-button-save');
     
-    factoryResetModal = $('#factory-reset-modal');
-    factoryResetCancel = $('#factory-reset-cancel');
-    factoryResetConfirm = $('#factory-reset-confirm');
+    elements.factoryResetModal = $('#factory-reset-modal');
+    elements.factoryResetCancel = $('#factory-reset-cancel');
+    elements.factoryResetConfirm = $('#factory-reset-confirm');
     
-    customFileActions = $('#custom-file-actions');
-    customButtonsList = $('#custom-buttons-list');
-    addCustomButtonBtn = $('#add-custom-button');
-    buttonDropZone = $('#button-drop-zone');
+    elements.customFileActions = $('#custom-file-actions');
+    elements.customButtonsList = $('#custom-buttons-list');
+    elements.addCustomButtonBtn = $('#add-custom-button');
+    elements.buttonDropZone = $('#button-drop-zone');
 
     // Verify critical elements exist
-    const criticalElements = [fileListEl, codeEl, termEl, statusEl, runBtn];
-    const missing = criticalElements.filter(el => !el);
+    const criticalElements = [
+      'fileList', 'code', 'terminal', 'status', 'runBtn', 'newFileBtn'
+    ];
+    
+    const missing = criticalElements.filter(key => !elements[key]);
     
     if (missing.length > 0) {
-      console.error('Critical elements missing from DOM:', missing);
-      throw new Error('Required DOM elements not found');
+      console.error('❌ Critical elements missing:', missing);
+      throw new Error(`Required DOM elements not found: ${missing.join(', ')}`);
     }
 
     console.log('✅ All elements initialized successfully');
@@ -260,16 +266,16 @@ const extToLang = (p) => {
 
 // Utility functions with error handling
 function setStatus(msg) {
-  if (statusEl) {
-    statusEl.textContent = msg;
+  if (elements.status) {
+    elements.status.textContent = msg;
     console.log(`Status: ${msg}`);
   }
 }
 
 function println(s = '') {
-  if (termEl) {
-    termEl.textContent += s + '\n';
-    termEl.scrollTop = termEl.scrollHeight;
+  if (elements.terminal) {
+    elements.terminal.textContent += s + '\n';
+    elements.terminal.scrollTop = elements.terminal.scrollHeight;
   }
 }
 
@@ -363,16 +369,16 @@ async function loadFiles() {
 
 // Enhanced file list rendering
 function renderFileList() {
-  if (!fileListEl) {
+  if (!elements.fileList) {
     console.error('File list element not found');
     return;
   }
   
   try {
-    fileListEl.innerHTML = '';
+    elements.fileList.innerHTML = '';
     
     if (files.length === 0) {
-      fileListEl.innerHTML = '<div class="muted" style="padding: 12px;">No files yet. Create your first file!</div>';
+      elements.fileList.innerHTML = '<div class="muted" style="padding: 12px;">No files yet. Create your first file!</div>';
       return;
     }
     
@@ -418,21 +424,21 @@ function renderFileList() {
         showRenameModal(file.path);
       });
       
-      fileListEl.appendChild(el);
+      elements.fileList.appendChild(el);
     });
   } catch (error) {
     console.error('Error rendering file list:', error);
-    fileListEl.innerHTML = '<div class="muted" style="padding: 12px; color: red;">Error rendering files</div>';
+    elements.fileList.innerHTML = '<div class="muted" style="padding: 12px; color: red;">Error rendering files</div>';
   }
 }
 
 // Enhanced custom button rendering
 function renderCustomButtons() {
-  if (!customFileActions) return;
+  if (!elements.customFileActions) return;
   
   try {
     // Remove existing custom buttons
-    const existingCustom = customFileActions.querySelectorAll('.custom-button');
+    const existingCustom = elements.customFileActions.querySelectorAll('.custom-button');
     existingCustom.forEach(btn => btn.remove());
     
     // Add custom buttons
@@ -461,10 +467,10 @@ function renderCustomButtons() {
       };
       
       // Insert before drop zone if it exists
-      if (buttonDropZone) {
-        customFileActions.insertBefore(btn, buttonDropZone);
+      if (elements.buttonDropZone) {
+        elements.customFileActions.insertBefore(btn, elements.buttonDropZone);
       } else {
-        customFileActions.appendChild(btn);
+        elements.customFileActions.appendChild(btn);
       }
     });
     
@@ -487,16 +493,16 @@ async function selectFile(path) {
     const content = await api(`/file?path=${encodeURIComponent(path)}`);
     
     activePath = path;
-    if (codeEl) {
-      codeEl.value = content || '';
+    if (elements.code) {
+      elements.code.value = content || '';
     }
     dirty = false;
     renderFileList();
     
     // Auto-detect language
     const autoLang = extToLang(path);
-    if (autoLang && langEl && !langEl.value) {
-      langEl.value = autoLang;
+    if (autoLang && elements.language && !elements.language.value) {
+      elements.language.value = autoLang;
     }
     
     setStatus(`Loaded ${path}`);
@@ -509,7 +515,7 @@ async function selectFile(path) {
 
 // Enhanced save function
 async function saveActive() {
-  if (!activePath || !codeEl) {
+  if (!activePath || !elements.code) {
     console.warn('Cannot save: no active file or code element');
     return;
   }
@@ -520,7 +526,7 @@ async function saveActive() {
       method: 'PUT', 
       body: JSON.stringify({ 
         path: activePath, 
-        content: codeEl.value || '' 
+        content: elements.code.value || '' 
       })
     });
     
@@ -592,19 +598,19 @@ function executeCustomButtonCode(code) {
   }
 }
 
-// Modal functions with error checking
+// FIXED: Modal functions with proper element checking
 function showModal() {
-  if (!newFileModal || !newFileNameInput) {
+  if (!elements.newFileModal || !elements.newFileNameInput) {
     console.error('New file modal elements not found');
     return;
   }
-  newFileModal.classList.add('show');
-  newFileNameInput.value = '';
-  newFileNameInput.focus();
+  elements.newFileModal.classList.add('show');
+  elements.newFileNameInput.value = '';
+  elements.newFileNameInput.focus();
 }
 
 function hideModal() {
-  newFileModal?.classList.remove('show');
+  elements.newFileModal?.classList.remove('show');
 }
 
 function showRenameModal(filename) {
@@ -613,48 +619,48 @@ function showRenameModal(filename) {
     return;
   }
   
-  if (!renameFileModal || !renameFileNameInput || !currentFilenameEl) {
+  if (!elements.renameFileModal || !elements.renameFileNameInput || !elements.currentFilename) {
     console.error('Rename modal elements not found');
     return;
   }
   
   fileToRename = filename;
-  currentFilenameEl.textContent = filename;
-  renameFileNameInput.value = filename;
-  renameFileModal.classList.add('show');
-  renameFileNameInput.focus();
+  elements.currentFilename.textContent = filename;
+  elements.renameFileNameInput.value = filename;
+  elements.renameFileModal.classList.add('show');
+  elements.renameFileNameInput.focus();
 }
 
 function hideRenameModal() {
-  renameFileModal?.classList.remove('show');
+  elements.renameFileModal?.classList.remove('show');
   fileToRename = null;
 }
 
 function showDeleteModal(filename) {
-  if (!deleteFileModal || !deleteFileName) {
+  if (!elements.deleteFileModal || !elements.deleteFileName) {
     console.error('Delete modal elements not found');
     return;
   }
-  deleteFileName.textContent = filename;
-  deleteFileModal.classList.add('show');
+  elements.deleteFileName.textContent = filename;
+  elements.deleteFileModal.classList.add('show');
 }
 
 function hideDeleteModal() {
-  deleteFileModal?.classList.remove('show');
+  elements.deleteFileModal?.classList.remove('show');
 }
 
 function showSettings() {
-  if (!settingsPanel) {
+  if (!elements.settingsPanel) {
     console.error('Settings panel not found');
     return;
   }
-  settingsPanel.classList.add('show');
+  elements.settingsPanel.classList.add('show');
   renderCustomButtonSettings();
   updateThemeInputs();
 }
 
 function hideSettings() {
-  settingsPanel?.classList.remove('show');
+  elements.settingsPanel?.classList.remove('show');
 }
 
 // Enhanced theme management
@@ -729,13 +735,13 @@ function updateThemeFromInputs() {
 
 // Enhanced custom button settings
 function renderCustomButtonSettings() {
-  if (!customButtonsList) return;
+  if (!elements.customButtonsList) return;
   
   try {
-    customButtonsList.innerHTML = '';
+    elements.customButtonsList.innerHTML = '';
     
     if (customButtons.length === 0) {
-      customButtonsList.innerHTML = '<p class="muted">No custom buttons added yet. Click "Add Custom Button" to create your first one!</p>';
+      elements.customButtonsList.innerHTML = '<p class="muted">No custom buttons added yet. Click "Add Custom Button" to create your first one!</p>';
       return;
     }
     
@@ -759,7 +765,7 @@ function renderCustomButtonSettings() {
         </div>
       `;
       
-      customButtonsList.appendChild(item);
+      elements.customButtonsList.appendChild(item);
     });
   } catch (error) {
     console.error('Error rendering custom button settings:', error);
@@ -781,7 +787,7 @@ window.removeCustomButton = (index) => {
 
 window.editCustomButton = (index) => {
   try {
-    if (!editCustomButtonModal) {
+    if (!elements.editCustomButtonModal) {
       console.error('Edit modal not found');
       return;
     }
@@ -789,15 +795,15 @@ window.editCustomButton = (index) => {
     editingButtonIndex = index;
     const button = customButtons[index];
     
-    if (editButtonName) editButtonName.value = button.name || '';
-    if (editButtonCode) editButtonCode.value = button.code || '';
+    if (elements.editButtonName) elements.editButtonName.value = button.name || '';
+    if (elements.editButtonCode) elements.editButtonCode.value = button.code || '';
     
     const iconSelect = $('#edit-button-icon');
     const colorSelect = $('#edit-button-color');
     if (iconSelect) iconSelect.value = button.icon || '';
     if (colorSelect) colorSelect.value = button.color || '';
     
-    editCustomButtonModal.classList.add('show');
+    elements.editCustomButtonModal.classList.add('show');
   } catch (error) {
     console.error('Error editing custom button:', error);
   }
@@ -821,13 +827,13 @@ window.moveButton = (index, direction) => {
 
 // Enhanced file operations
 async function createNewFile() {
-  if (!newFileNameInput) {
+  if (!elements.newFileNameInput) {
     console.error('New file input not found');
     return;
   }
   
   try {
-    const name = newFileNameInput.value.trim();
+    const name = elements.newFileNameInput.value.trim();
     if (!name) {
       alert('Please enter a filename');
       return;
@@ -860,14 +866,14 @@ async function createNewFile() {
 }
 
 async function renameFile() {
-  if (!renameFileNameInput || !fileToRename) {
+  if (!elements.renameFileNameInput || !fileToRename) {
     console.error('Rename inputs not found');
     hideRenameModal();
     return;
   }
   
   try {
-    const newName = renameFileNameInput.value.trim();
+    const newName = elements.renameFileNameInput.value.trim();
     if (!newName) {
       alert('Please enter a filename');
       return;
@@ -933,7 +939,7 @@ async function deleteFile() {
     
     const deletedFile = activePath;
     activePath = null;
-    if (codeEl) codeEl.value = '';
+    if (elements.code) elements.code.value = '';
     dirty = false;
     
     await loadFiles();
@@ -947,14 +953,14 @@ async function deleteFile() {
 
 // Enhanced custom button operations
 function addCustomButton() {
-  if (!customButtonName || !customButtonCode) {
+  if (!elements.customButtonName || !elements.customButtonCode) {
     console.error('Custom button modal inputs not found');
     return;
   }
   
   try {
-    const name = customButtonName.value.trim();
-    const code = customButtonCode.value.trim();
+    const name = elements.customButtonName.value.trim();
+    const code = elements.customButtonCode.value.trim();
     const icon = $('#custom-button-icon')?.value || '';
     const color = $('#custom-button-color')?.value || '';
     
@@ -988,14 +994,14 @@ function addCustomButton() {
 }
 
 function saveEditedButton() {
-  if (editingButtonIndex === -1 || !editButtonName || !editButtonCode) {
+  if (editingButtonIndex === -1 || !elements.editButtonName || !elements.editButtonCode) {
     console.error('Edit button inputs not found');
     return;
   }
   
   try {
-    const name = editButtonName.value.trim();
-    const code = editButtonCode.value.trim();
+    const name = elements.editButtonName.value.trim();
+    const code = elements.editButtonCode.value.trim();
     const icon = $('#edit-button-icon')?.value || '';
     const color = $('#edit-button-color')?.value || '';
     
@@ -1026,30 +1032,30 @@ function saveEditedButton() {
 }
 
 function hideCustomButtonModal() {
-  customButtonModal?.classList.remove('show');
+  elements.customButtonModal?.classList.remove('show');
 }
 
 function hideEditButtonModal() {
-  editCustomButtonModal?.classList.remove('show');
+  elements.editCustomButtonModal?.classList.remove('show');
   editingButtonIndex = -1;
 }
 
 function showCustomButtonModal() {
-  if (!customButtonModal) {
+  if (!elements.customButtonModal) {
     console.error('Custom button modal not found');
     return;
   }
   
-  customButtonModal.classList.add('show');
-  if (customButtonName) customButtonName.value = '';
-  if (customButtonCode) customButtonCode.value = '';
+  elements.customButtonModal.classList.add('show');
+  if (elements.customButtonName) elements.customButtonName.value = '';
+  if (elements.customButtonCode) elements.customButtonCode.value = '';
   
   const iconSelect = $('#custom-button-icon');
   const colorSelect = $('#custom-button-color');
   if (iconSelect) iconSelect.value = '';
   if (colorSelect) colorSelect.value = '';
   
-  if (customButtonName) customButtonName.focus();
+  if (elements.customButtonName) elements.customButtonName.focus();
 }
 
 function factoryReset() {
@@ -1079,23 +1085,25 @@ function factoryReset() {
 }
 
 function showFactoryResetModal() {
-  factoryResetModal?.classList.add('show');
+  elements.factoryResetModal?.classList.add('show');
 }
 
 function hideFactoryResetModal() {
-  factoryResetModal?.classList.remove('show');
+  elements.factoryResetModal?.classList.remove('show');
 }
 
-// Enhanced event listener setup
+// FIXED: Enhanced event listener setup with proper element checking
 function setupEventListeners() {
+  console.log('🔧 Setting up event listeners...');
+  
   try {
     // Settings
-    settingsBtn?.addEventListener('click', showSettings);
-    backToEditorBtn?.addEventListener('click', hideSettings);
+    elements.settingsBtn?.addEventListener('click', showSettings);
+    elements.backToEditorBtn?.addEventListener('click', hideSettings);
     
     // File actions
-    $('#new-file')?.addEventListener('click', showModal);
-    $('#delete-file')?.addEventListener('click', () => {
+    elements.newFileBtn?.addEventListener('click', showModal);
+    elements.deleteFileBtn?.addEventListener('click', () => {
       if (!activePath) {
         alert('No file selected to delete');
         return;
@@ -1104,10 +1112,10 @@ function setupEventListeners() {
     });
 
     // New file modal
-    modalCancel?.addEventListener('click', hideModal);
-    modalCreate?.addEventListener('click', createNewFile);
+    elements.modalCancel?.addEventListener('click', hideModal);
+    elements.modalCreate?.addEventListener('click', createNewFile);
 
-    newFileNameInput?.addEventListener('keydown', (e) => {
+    elements.newFileNameInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         createNewFile();
@@ -1118,10 +1126,10 @@ function setupEventListeners() {
     });
 
     // Rename file modal
-    renameCancel?.addEventListener('click', hideRenameModal);
-    renameConfirm?.addEventListener('click', renameFile);
+    elements.renameCancel?.addEventListener('click', hideRenameModal);
+    elements.renameConfirm?.addEventListener('click', renameFile);
 
-    renameFileNameInput?.addEventListener('keydown', (e) => {
+    elements.renameFileNameInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         renameFile();
@@ -1132,20 +1140,20 @@ function setupEventListeners() {
     });
 
     // Delete file modal
-    deleteCancel?.addEventListener('click', hideDeleteModal);
-    deleteConfirm?.addEventListener('click', deleteFile);
+    elements.deleteCancel?.addEventListener('click', hideDeleteModal);
+    elements.deleteConfirm?.addEventListener('click', deleteFile);
 
     // Custom button modals
-    addCustomButtonBtn?.addEventListener('click', showCustomButtonModal);
-    customButtonCancel?.addEventListener('click', hideCustomButtonModal);
-    customButtonSave?.addEventListener('click', addCustomButton);
-    editButtonCancel?.addEventListener('click', hideEditButtonModal);
-    editButtonSave?.addEventListener('click', saveEditedButton);
+    elements.addCustomButtonBtn?.addEventListener('click', showCustomButtonModal);
+    elements.customButtonCancel?.addEventListener('click', hideCustomButtonModal);
+    elements.customButtonSave?.addEventListener('click', addCustomButton);
+    elements.editButtonCancel?.addEventListener('click', hideEditButtonModal);
+    elements.editButtonSave?.addEventListener('click', saveEditedButton);
 
     // Factory reset
     $('#factory-reset')?.addEventListener('click', showFactoryResetModal);
-    factoryResetCancel?.addEventListener('click', hideFactoryResetModal);
-    factoryResetConfirm?.addEventListener('click', factoryReset);
+    elements.factoryResetCancel?.addEventListener('click', hideFactoryResetModal);
+    elements.factoryResetConfirm?.addEventListener('click', factoryReset);
 
     // Theme controls
     $('.theme-preset').forEach(preset => {
@@ -1186,8 +1194,10 @@ function setupEventListeners() {
     });
 
     // Modal click-outside-to-close
-    const modals = [newFileModal, renameFileModal, deleteFileModal, 
-                   customButtonModal, editCustomButtonModal, factoryResetModal];
+    const modals = [
+      elements.newFileModal, elements.renameFileModal, elements.deleteFileModal, 
+      elements.customButtonModal, elements.editCustomButtonModal, elements.factoryResetModal
+    ];
     modals.forEach(modal => {
       modal?.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -1210,7 +1220,7 @@ function setupEventListeners() {
     });
 
     // Editor dirty tracking
-    codeEl?.addEventListener('input', () => { 
+    elements.code?.addEventListener('input', () => { 
       dirty = true; 
       setStatus(activePath ? `${activePath} (unsaved)` : 'Unsaved changes');
     });
@@ -1223,8 +1233,8 @@ function setupEventListeners() {
       }
     });
 
-    // Enhanced run button
-    runBtn?.addEventListener('click', async (e) => {
+    // FIXED: Enhanced run button with proper element checking
+    elements.runBtn?.addEventListener('click', async (e) => {
       try {
         if ($('#particle-effects')?.checked) {
           createParticle(e.clientX, e.clientY);
@@ -1239,11 +1249,11 @@ function setupEventListeners() {
         await saveActive();
         
         // Clear terminal
-        if (termEl) termEl.textContent = '';
+        if (elements.terminal) elements.terminal.textContent = '';
         setStatus('Running…');
         
-        const language = langEl?.value || extToLang(activePath) || '';
-        const flags = flagsEl?.value || '';
+        const language = elements.language?.value || extToLang(activePath) || '';
+        const flags = elements.flags?.value || '';
         
         println(`🚀 Running ${activePath}${language ? ` (${language})` : ''}...`);
         
@@ -1293,11 +1303,11 @@ function setupEventListeners() {
   }
 }
 
-// Enhanced initialization
+// FIXED: Enhanced initialization with proper DOM waiting
 function initialize() {
+  console.log('🚀 Initializing Enhanced CodeRunner...');
+  
   try {
-    console.log('🚀 Initializing Enhanced CodeRunner...');
-    
     // Initialize elements first
     if (!initializeElements()) {
       throw new Error('Failed to initialize DOM elements');
@@ -1314,8 +1324,8 @@ function initialize() {
     renderCustomButtons();
     
     // Welcome message
-    if (termEl) {
-      termEl.textContent = '';
+    if (elements.terminal) {
+      elements.terminal.textContent = '';
       println('🎨 Enhanced CodeRunner loaded!');
       println('✨ Features: Custom themes, buttons, drag & drop, and more!');
       println('⚙️ Click the settings gear to explore customization options.');
@@ -1328,6 +1338,7 @@ function initialize() {
     loadFiles().then(() => {
       isInitialized = true;
       console.log('✅ Enhanced CodeRunner initialized successfully!');
+      setStatus('Ready');
     }).catch(error => {
       console.error('❌ Failed to load files:', error);
       println(`❌ Failed to load files: ${error.message}`);
@@ -1336,26 +1347,40 @@ function initialize() {
     
   } catch (error) {
     console.error('❌ Fatal initialization error:', error);
-    if (termEl) {
-      termEl.textContent = `❌ Initialization failed: ${error.message}\n\nPlease refresh the page.`;
+    if (elements.terminal) {
+      elements.terminal.textContent = `❌ Initialization failed: ${error.message}\n\nPlease refresh the page.`;
     }
-    if (statusEl) {
-      statusEl.textContent = 'Initialization failed';
+    if (elements.status) {
+      elements.status.textContent = 'Initialization failed';
     }
   }
 }
 
-// Wait for DOM to be ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize);
-} else {
-  // DOM is already ready
-  initialize();
+// FIXED: Enhanced DOM ready checking with multiple fallbacks
+function waitForDOMAndInitialize() {
+  if (document.readyState === 'loading') {
+    // DOM is still loading
+    document.addEventListener('DOMContentLoaded', initialize);
+  } else {
+    // DOM is already ready
+    setTimeout(initialize, 100); // Small delay to ensure all elements are rendered
+  }
+  
+  // Additional fallback - ensure we initialize even if DOMContentLoaded doesn't fire
+  setTimeout(() => {
+    if (!isInitialized) {
+      console.warn('⚠️ Fallback initialization triggered');
+      initialize();
+    }
+  }, 2000);
 }
+
+// Start the initialization process
+waitForDOMAndInitialize();
 
 // Export for debugging
 window.debugCodeRunner = {
-  files, customButtons, currentTheme,
+  elements, files, customButtons, currentTheme,
   loadFiles, renderFileList, renderCustomButtons,
-  api, setStatus, println
+  api, setStatus, println, initialize
 };
