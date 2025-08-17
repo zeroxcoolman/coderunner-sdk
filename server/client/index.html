@@ -5,19 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CodeRunner Activity</title>
     <link rel="icon" type="image/png" href="/rocket.png" />
-    <style>
-      html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    <style id="base-styles">
+      html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; transition: all 0.3s ease; }
       #app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
-      header { display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid #e5e7eb; }
+      header { display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid #e5e7eb; background: var(--header-bg, white); }
       header img { width:20px; height:20px; }
       .toolbar { display:flex; gap:8px; align-items:center; }
       .content { display:grid; grid-template-columns: 240px 1fr; min-height: 0; }
-      .sidebar { border-right:1px solid #e5e7eb; padding:8px; overflow:auto; }
+      .sidebar { border-right:1px solid #e5e7eb; padding:8px; overflow:auto; background: var(--sidebar-bg, white); }
       .editor-wrap { display:grid; grid-template-rows: 1fr 180px; min-height: 0; }
       #editor { width:100%; height:100%; }
-      .terminal { background:#0b0b0b; color:#e5e7eb; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; padding:8px; overflow:auto; border-top:1px solid #111; white-space:pre-wrap; }
-      .file { display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-radius:6px; cursor:pointer; }
-      .file.active { background:#f3f4f6; }
+      .terminal { 
+        background: var(--terminal-bg, #0b0b0b); 
+        color: var(--terminal-text, #e5e7eb); 
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+        font-size:12px; 
+        padding:8px; 
+        overflow:auto; 
+        border-top:1px solid #111; 
+        white-space:pre-wrap; 
+        opacity: var(--terminal-opacity, 1);
+      }
+      .file { 
+        display:flex; 
+        justify-content:space-between; 
+        align-items:center; 
+        padding:4px 6px; 
+        border-radius: var(--border-radius, 6px); 
+        cursor:pointer; 
+        transition: all 0.2s ease;
+      }
+      .file.active { background: var(--accent-color, #f3f4f6); }
       .file-name { flex: 1; }
       .file-actions { display: none; gap: 4px; align-items: center; }
       .file:hover .file-actions { display: flex; }
@@ -26,19 +44,37 @@
         font-size: 10px; 
         border: 1px solid #d1d5db; 
         background: white; 
-        border-radius: 3px; 
+        border-radius: var(--border-radius, 3px); 
         cursor: pointer;
         opacity: 0.7;
+        transition: all 0.2s ease;
       }
       .file-action-btn:hover { opacity: 1; }
       .muted { color:#6b7280; font-size: 11px; }
-      button, select, input { padding:6px 8px; border:1px solid #d1d5db; border-radius:8px; background:white; }
-      button.primary { background:#111827; color:white; border-color:#111827; }
-      button:hover { opacity: 0.8; }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      .files-actions { display:flex; flex-wrap: wrap; gap:6px; margin-top:8px; }
-      footer { display:flex; align-items:center; gap:8px; padding:8px 12px; border-top:1px solid #e5e7eb; }
-      #codearea { width:100%; height:100%; border:0; outline:0; padding:12px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; resize: none; }
+      button, select, input { 
+        padding:6px 8px; 
+        border:1px solid #d1d5db; 
+        border-radius: var(--border-radius, 8px); 
+        background:white; 
+        transition: all 0.2s ease;
+        box-shadow: 0 var(--shadow-intensity, 2px) calc(var(--shadow-intensity, 2px) * 2) rgba(0,0,0,0.1);
+      }
+      button.primary { background: var(--primary-color, #111827); color:white; border-color: var(--primary-color, #111827); }
+      button:hover { opacity: 0.8; transform: translateY(-1px); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+      .files-actions { display:flex; flex-wrap: wrap; gap:6px; margin-top:8px; position: relative; }
+      footer { display:flex; align-items:center; gap:8px; padding:8px 12px; border-top:1px solid #e5e7eb; background: var(--footer-bg, white); }
+      #codearea { 
+        width:100%; 
+        height:100%; 
+        border:0; 
+        outline:0; 
+        padding:12px; 
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+        resize: none; 
+        background: var(--editor-bg, white);
+        color: var(--text-color, #1f2937);
+      }
       
       /* Settings gear icon */
       .settings-btn {
@@ -46,12 +82,13 @@
         border: none;
         cursor: pointer;
         padding: 6px;
-        border-radius: 6px;
+        border-radius: var(--border-radius, 6px);
         display: flex;
         align-items: center;
         justify-content: center;
+        transition: all 0.2s ease;
       }
-      .settings-btn:hover { background: #f3f4f6; }
+      .settings-btn:hover { background: #f3f4f6; transform: rotate(15deg); }
       
       /* Settings panel */
       .settings-panel {
@@ -61,10 +98,11 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: white;
+        background: var(--background-color, white);
         z-index: 1000;
         padding: 20px;
         overflow: auto;
+        animation: slideIn 0.3s ease;
       }
       .settings-panel.show { display: block; }
       .settings-header {
@@ -77,11 +115,18 @@
       }
       .settings-section {
         margin-bottom: 30px;
+        border: 1px solid #e5e7eb;
+        border-radius: var(--border-radius, 8px);
+        padding: 20px;
+        background: #f9fafb;
+        box-shadow: 0 var(--shadow-intensity, 2px) calc(var(--shadow-intensity, 2px) * 2) rgba(0,0,0,0.05);
       }
       .settings-section h3 {
+        margin-top: 0;
         margin-bottom: 15px;
         font-size: 16px;
         font-weight: 600;
+        color: var(--text-color, #1f2937);
       }
       .custom-buttons-list {
         display: flex;
@@ -93,19 +138,108 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 8px;
+        padding: 12px;
         border: 1px solid #e5e7eb;
-        border-radius: 6px;
+        border-radius: var(--border-radius, 6px);
+        background: white;
+        position: relative;
+        transition: all 0.2s ease;
       }
+      .custom-button-item:hover { transform: translateX(5px); }
+      .custom-button-item.dragging { opacity: 0.5; transform: rotate(2deg); }
       .custom-button-preview {
-        padding: 4px 8px;
+        padding: 6px 12px;
         border: 1px solid #d1d5db;
-        border-radius: 4px;
-        background: #f9fafb;
-        min-width: 80px;
+        border-radius: var(--border-radius, 4px);
+        background: white;
+        min-width: 100px;
         text-align: center;
         font-size: 12px;
+        transition: all 0.2s ease;
       }
+      .custom-button-order {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .order-btn, .edit-btn {
+        padding: 4px 6px;
+        font-size: 10px;
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
+        cursor: pointer;
+        border-radius: var(--border-radius, 2px);
+        transition: all 0.2s ease;
+      }
+      .order-btn:hover, .edit-btn:hover { background: #e5e7eb; transform: scale(1.1); }
+      
+      /* Theme customization */
+      .theme-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .theme-item {
+        border: 1px solid #e5e7eb;
+        border-radius: var(--border-radius, 8px);
+        padding: 15px;
+        background: white;
+        transition: all 0.2s ease;
+      }
+      .theme-item:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+      .theme-item h4 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .color-input-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .color-input {
+        width: 40px;
+        height: 30px;
+        border: 1px solid #d1d5db;
+        border-radius: var(--border-radius, 4px);
+        cursor: pointer;
+        padding: 0;
+        transition: all 0.2s ease;
+      }
+      .color-input:hover { transform: scale(1.1); }
+      .theme-presets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 15px;
+      }
+      .theme-preset {
+        padding: 8px 16px;
+        border: 1px solid #d1d5db;
+        border-radius: var(--border-radius, 6px);
+        background: white;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        position: relative;
+        overflow: hidden;
+      }
+      .theme-preset:hover { transform: translateY(-2px); }
+      .theme-preset.active { background: var(--primary-color, #111827); color: white; }
+      .theme-preset::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        transition: left 0.5s ease;
+      }
+      .theme-preset:hover::before { left: 100%; }
       
       /* Modal styles */
       .modal { 
@@ -119,19 +253,25 @@
         background-color: rgba(0,0,0,0.5); 
         align-items: center; 
         justify-content: center; 
+        backdrop-filter: blur(5px);
       }
-      .modal.show { display: flex; }
+      .modal.show { display: flex; animation: modalFadeIn 0.3s ease; }
       .modal-content { 
         background-color: white; 
         padding: 20px; 
-        border-radius: 10px; 
-        width: 400px; 
+        border-radius: var(--border-radius, 10px); 
+        width: 500px; 
         max-width: 90%; 
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        animation: modalSlideIn 0.3s ease;
       }
       .modal-header { 
         font-weight: bold; 
         margin-bottom: 15px; 
         font-size: 16px; 
+        color: var(--text-color, #1f2937);
       }
       .modal-body { margin-bottom: 15px; }
       .modal-footer { 
@@ -139,13 +279,14 @@
         gap: 10px; 
         justify-content: flex-end; 
       }
-      .modal input, .modal textarea { 
+      .modal input, .modal textarea, .modal select { 
         width: 100%; 
         margin-bottom: 10px; 
         box-sizing: border-box;
+        border-radius: var(--border-radius, 6px);
       }
       .modal textarea {
-        height: 80px;
+        height: 120px;
         resize: vertical;
         font-family: ui-monospace, monospace;
       }
@@ -157,16 +298,99 @@
       .warning {
         background: #fef3cd;
         border: 1px solid #f59e0b;
-        border-radius: 6px;
+        border-radius: var(--border-radius, 6px);
         padding: 12px;
         margin-bottom: 15px;
       }
       .danger-zone {
         border: 1px solid #dc2626;
-        border-radius: 6px;
+        border-radius: var(--border-radius, 6px);
         padding: 15px;
         background: #fef2f2;
       }
+      .protected {
+        position: relative;
+        pointer-events: none;
+      }
+      .protected::after {
+        content: '🔒';
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        font-size: 12px;
+        background: rgba(255,255,255,0.9);
+        padding: 2px 4px;
+        border-radius: 50%;
+      }
+
+      /* Drag and drop */
+      .drop-zone {
+        min-height: 40px;
+        border: 2px dashed #d1d5db;
+        border-radius: var(--border-radius, 6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6b7280;
+        font-size: 12px;
+        margin: 5px 0;
+        transition: all 0.2s ease;
+      }
+      .drop-zone.highlight {
+        border-color: var(--accent-color, #3b82f6);
+        background: #eff6ff;
+        transform: scale(1.02);
+      }
+
+      /* Custom button colors */
+      .custom-button.red { background: #dc2626; color: white; }
+      .custom-button.blue { background: #2563eb; color: white; }
+      .custom-button.green { background: #16a34a; color: white; }
+      .custom-button.purple { background: #9333ea; color: white; }
+      .custom-button.orange { background: #ea580c; color: white; }
+      .custom-button.pink { background: #db2777; color: white; }
+      .custom-button.rainbow { 
+        background: linear-gradient(45deg, #ff0000, #ff8000, #ffff00, #80ff00, #00ff00, #00ff80, #00ffff, #0080ff, #0000ff, #8000ff, #ff00ff, #ff0080);
+        color: white;
+        animation: rainbow 2s linear infinite;
+      }
+
+      /* Animations */
+      @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes modalSlideIn { from { transform: scale(0.8) translateY(-20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+      @keyframes rainbow { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+      @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } 60% { transform: translateY(-5px); } }
+      @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes glow { 0%, 100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.5); } 50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.8); } }
+      @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+      @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
+
+      /* Hover effects */
+      .hover-scale:hover { transform: scale(1.05); }
+      .hover-bounce:hover { animation: bounce 0.6s; }
+      .hover-rotate:hover { animation: rotate 0.6s; }
+      .hover-glow:hover { animation: glow 1s infinite; }
+      .hover-rainbow:hover { animation: rainbow 1s linear infinite; }
+
+      /* Particle effects */
+      .particle {
+        position: fixed;
+        width: 4px;
+        height: 4px;
+        background: var(--accent-color, #3b82f6);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 9999;
+        animation: particle 1s ease-out forwards;
+      }
+      @keyframes particle {
+        0% { opacity: 1; transform: scale(1); }
+        100% { opacity: 0; transform: scale(0) translateY(-50px); }
+      }
+    </style>
+    <style id="custom-styles">
+      /* Custom user styles will be injected here */
     </style>
   </head>
   <body>
@@ -190,7 +414,7 @@
             <option>ruby</option>
           </select>
           <input id="flags" placeholder="compiler flags (optional)" />
-          <button id="run" class="primary">Run ▶</button>
+          <button id="run" class="primary protected">Run ▶</button>
           <button class="settings-btn" id="settings-btn" title="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
@@ -203,15 +427,16 @@
         <aside class="sidebar">
           <div id="file-list"></div>
           <div class="files-actions" id="custom-file-actions">
-            <button id="new-file">New File</button>
-            <button id="delete-file">Delete File</button>
+            <button id="new-file" class="protected">New File</button>
+            <button id="delete-file" class="protected">Delete File</button>
+            <div class="drop-zone" id="button-drop-zone">Drop custom buttons here</div>
           </div>
         </aside>
         <div class="editor-wrap">
           <div id="editor">
             <textarea id="codearea" spellcheck="false" placeholder="Select a file or create a new one to start coding..."></textarea>
           </div>
-          <div class="terminal" id="terminal">Welcome to CodeRunner! Create a file or select an existing one to get started.</div>
+          <div class="terminal" id="terminal">🎉 Welcome to Enhanced CodeRunner! Create a file or select an existing one to get started.</div>
         </div>
       </div>
       <footer>
@@ -222,34 +447,260 @@
     <!-- Settings Panel -->
     <div id="settings-panel" class="settings-panel">
       <div class="settings-header">
-        <button id="back-to-editor" class="primary">← Back to Editor</button>
-        <h2>Settings & Customization</h2>
+        <button id="back-to-editor" class="primary protected">← Back to Editor</button>
+        <h2>🎨 Advanced Customization Center</h2>
       </div>
 
       <div class="settings-section">
-        <h3>Custom File Actions</h3>
-        <p class="muted">Add custom buttons to the file actions area. Use JavaScript code to define what happens when clicked.</p>
+        <h3>🎯 Custom Action Buttons</h3>
+        <p class="muted">Create, edit, and reorder custom action buttons. Drag buttons to reorder them in the interface.</p>
         
         <div class="custom-buttons-list" id="custom-buttons-list">
           <!-- Custom buttons will be rendered here -->
         </div>
         
-        <button id="add-custom-button" class="primary">Add Custom Button</button>
+        <button id="add-custom-button" class="primary">✨ Add Custom Button</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>🎨 Theme Customization</h3>
+        <p class="muted">Customize the appearance of your CodeRunner interface.</p>
+        
+        <div class="theme-presets">
+          <div class="theme-preset active" data-theme="default">Default</div>
+          <div class="theme-preset" data-theme="dark">🌙 Dark Mode</div>
+          <div class="theme-preset" data-theme="retro">📼 Retro</div>
+          <div class="theme-preset" data-theme="neon">⚡ Neon</div>
+          <div class="theme-preset" data-theme="nature">🌿 Nature</div>
+          <div class="theme-preset" data-theme="ocean">🌊 Ocean</div>
+        </div>
+        
+        <div class="theme-grid">
+          <div class="theme-item">
+            <h4>🎨 Colors</h4>
+            <div class="color-input-group">
+              <input type="color" class="color-input" id="primary-color" value="#111827">
+              <label for="primary-color">Primary Color</label>
+            </div>
+            <div class="color-input-group">
+              <input type="color" class="color-input" id="accent-color" value="#3b82f6">
+              <label for="accent-color">Accent Color</label>
+            </div>
+            <div class="color-input-group">
+              <input type="color" class="color-input" id="background-color" value="#ffffff">
+              <label for="background-color">Background</label>
+            </div>
+            <div class="color-input-group">
+              <input type="color" class="color-input" id="text-color" value="#1f2937">
+              <label for="text-color">Text Color</label>
+            </div>
+          </div>
+          
+          <div class="theme-item">
+            <h4>✨ Effects</h4>
+            <div class="color-input-group">
+              <input type="range" id="border-radius" min="0" max="20" value="8">
+              <label for="border-radius">Border Radius: <span id="radius-value">8px</span></label>
+            </div>
+            <div class="color-input-group">
+              <input type="range" id="shadow-intensity" min="0" max="10" value="2">
+              <label for="shadow-intensity">Shadow Intensity: <span id="shadow-value">2</span></label>
+            </div>
+            <div class="color-input-group">
+              <input type="checkbox" id="animations-enabled" checked>
+              <label for="animations-enabled">Enable Animations</label>
+            </div>
+            <div class="color-input-group">
+              <select id="font-family">
+                <option value="system">System Font</option>
+                <option value="monospace">Monospace</option>
+                <option value="serif">Serif</option>
+                <option value="comic">Comic Sans (Fun!)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="theme-item">
+            <h4>🖥️ Terminal</h4>
+            <div class="color-input-group">
+              <input type="color" class="color-input" id="terminal-bg" value="#0b0b0b">
+              <label for="terminal-bg">Terminal Background</label>
+            </div>
+            <div class="color-input-group">
+              <input type="color" class="color-input" id="terminal-text" value="#e5e7eb">
+              <label for="terminal-text">Terminal Text</label>
+            </div>
+            <div class="color-input-group">
+              <input type="range" id="terminal-opacity" min="0.1" max="1" step="0.1" value="1">
+              <label for="terminal-opacity">Opacity: <span id="opacity-value">100%</span></label>
+            </div>
+          </div>
+          
+          <div class="theme-item">
+            <h4>📝 Custom CSS</h4>
+            <textarea id="custom-css" placeholder="Add your own CSS here...
+Example:
+.file:hover { 
+  transform: scale(1.02); 
+}
+button { 
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+}" rows="6"></textarea>
+            <button id="apply-css" class="primary" style="width: 100%; margin-top: 8px;">🚀 Apply CSS</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>🎭 Interface Animations</h3>
+        <p class="muted">Add some life to your interface with custom animations and effects.</p>
+        
+        <div class="theme-grid">
+          <div class="theme-item">
+            <h4>Button Effects</h4>
+            <div class="color-input-group">
+              <select id="button-hover-effect">
+                <option value="scale">Scale Up</option>
+                <option value="bounce">Bounce</option>
+                <option value="rotate">Rotate</option>
+                <option value="glow">Glow</option>
+                <option value="rainbow">Rainbow</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="theme-item">
+            <h4>File Effects</h4>
+            <div class="color-input-group">
+              <select id="file-click-effect">
+                <option value="none">None</option>
+                <option value="flash">Flash</option>
+                <option value="pulse">Pulse</option>
+                <option value="shake">Shake</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="theme-item">
+            <h4>Special Effects</h4>
+            <div class="color-input-group">
+              <input type="checkbox" id="particle-effects">
+              <label for="particle-effects">🎆 Particle Effects</label>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="settings-section">
         <div class="danger-zone">
-          <h3>Danger Zone</h3>
+          <h3>⚠️ Danger Zone</h3>
           <p class="muted">Reset all customizations to default settings. Your files will not be affected.</p>
-          <button id="factory-reset" style="background-color: #dc2626; color: white; border-color: #dc2626;">Factory Reset Customizations</button>
+          <button id="factory-reset" style="background-color: #dc2626; color: white; border-color: #dc2626;" class="protected">🏭 Factory Reset Customizations</button>
         </div>
       </div>
     </div>
 
-    <!-- New File Modal -->
+    <!-- Enhanced Custom Button Modal -->
+    <div id="custom-button-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">✨ Custom Button Designer</div>
+        <div class="modal-body">
+          <input type="text" id="custom-button-name" placeholder="Button name..." />
+          <div class="examples">The text that will appear on the button</div>
+          
+          <select id="custom-button-icon">
+            <option value="">No Icon</option>
+            <option value="🚀">🚀 Rocket</option>
+            <option value="⚡">⚡ Lightning</option>
+            <option value="🎯">🎯 Target</option>
+            <option value="🔥">🔥 Fire</option>
+            <option value="💾">💾 Save</option>
+            <option value="🔧">🔧 Tools</option>
+            <option value="🎨">🎨 Art</option>
+            <option value="📁">📁 Folder</option>
+            <option value="⭐">⭐ Star</option>
+            <option value="🎪">🎪 Circus</option>
+            <option value="🎵">🎵 Music</option>
+            <option value="🌟">🌟 Sparkle</option>
+          </select>
+          <div class="examples">Optional icon for your button</div>
+          
+          <select id="custom-button-color">
+            <option value="">Default</option>
+            <option value="red">❤️ Red</option>
+            <option value="blue">💙 Blue</option>
+            <option value="green">💚 Green</option>
+            <option value="purple">💜 Purple</option>
+            <option value="orange">🧡 Orange</option>
+            <option value="pink">💗 Pink</option>
+            <option value="rainbow">🌈 Rainbow</option>
+          </select>
+          <div class="examples">Button color theme</div>
+          
+          <textarea id="custom-button-code" placeholder="JavaScript code to execute when clicked..."></textarea>
+          <div class="examples">
+            Available variables: files, activePath, selectFile(), saveActive(), println(), api(), setStatus()
+            <br>Example: println('Hello from custom button!'); setStatus('Button clicked!');
+          </div>
+
+          <div class="warning">
+            <strong>⚠️ Security Notice:</strong> Custom JavaScript code will be executed in a sandboxed environment. Certain dangerous operations are restricted.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="custom-button-cancel">Cancel</button>
+          <button id="custom-button-save" class="primary">💾 Save Button</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Custom Button Modal -->
+    <div id="edit-custom-button-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">✏️ Edit Custom Button</div>
+        <div class="modal-body">
+          <input type="text" id="edit-button-name" placeholder="Button name..." />
+          <select id="edit-button-icon">
+            <option value="">No Icon</option>
+            <option value="🚀">🚀 Rocket</option>
+            <option value="⚡">⚡ Lightning</option>
+            <option value="🎯">🎯 Target</option>
+            <option value="🔥">🔥 Fire</option>
+            <option value="💾">💾 Save</option>
+            <option value="🔧">🔧 Tools</option>
+            <option value="🎨">🎨 Art</option>
+            <option value="📁">📁 Folder</option>
+            <option value="⭐">⭐ Star</option>
+            <option value="🎪">🎪 Circus</option>
+            <option value="🎵">🎵 Music</option>
+            <option value="🌟">🌟 Sparkle</option>
+          </select>
+          <select id="edit-button-color">
+            <option value="">Default</option>
+            <option value="red">❤️ Red</option>
+            <option value="blue">💙 Blue</option>
+            <option value="green">💚 Green</option>
+            <option value="purple">💜 Purple</option>
+            <option value="orange">🧡 Orange</option>
+            <option value="pink">💗 Pink</option>
+            <option value="rainbow">🌈 Rainbow</option>
+          </select>
+          <textarea id="edit-button-code" placeholder="JavaScript code to execute when clicked..."></textarea>
+          <div class="examples">
+            Available variables: files, activePath, selectFile(), saveActive(), println(), api(), setStatus()
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="edit-button-cancel">Cancel</button>
+          <button id="edit-button-save" class="primary">💾 Save Changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- All other existing modals -->
     <div id="new-file-modal" class="modal">
       <div class="modal-content">
-        <div class="modal-header">Create New File</div>
+        <div class="modal-header">📄 Create New File</div>
         <div class="modal-body">
           <input type="text" id="new-file-name" placeholder="Enter filename..." />
           <div class="examples">Examples: main.js, hello.py, test.c, script.sh</div>
@@ -261,10 +712,9 @@
       </div>
     </div>
 
-    <!-- Rename File Modal -->
     <div id="rename-file-modal" class="modal">
       <div class="modal-content">
-        <div class="modal-header">Rename File</div>
+        <div class="modal-header">✏️ Rename File</div>
         <div class="modal-body">
           <input type="text" id="rename-file-name" placeholder="Enter new filename..." />
           <div class="examples">Current name: <span id="current-filename"></span></div>
@@ -276,10 +726,9 @@
       </div>
     </div>
 
-    <!-- Delete File Modal -->
     <div id="delete-file-modal" class="modal">
       <div class="modal-content">
-        <div class="modal-header">Delete File</div>
+        <div class="modal-header">🗑️ Delete File</div>
         <div class="modal-body">
           <p>Are you sure you want to delete <strong id="delete-file-name"></strong>?</p>
           <p class="examples">This action cannot be undone.</p>
@@ -291,41 +740,17 @@
       </div>
     </div>
 
-    <!-- Custom Button Modal -->
-    <div id="custom-button-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">Add Custom Button</div>
-        <div class="modal-body">
-          <input type="text" id="custom-button-name" placeholder="Button name..." />
-          <div class="examples">The text that will appear on the button</div>
-          
-          <textarea id="custom-button-code" placeholder="JavaScript code to execute when clicked..."></textarea>
-          <div class="examples">
-            Available variables: files, activePath, selectFile(), saveActive(), println(), api(), setStatus()
-            <br>Example: println('Hello from custom button!');
-          </div>
-
-          <div class="warning">
-            <strong>Warning:</strong> Custom JavaScript code will be executed when the button is clicked. Only add code you trust.
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button id="custom-button-cancel">Cancel</button>
-          <button id="custom-button-save" class="primary">Add Button</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Factory Reset Modal -->
     <div id="factory-reset-modal" class="modal">
       <div class="modal-content">
-        <div class="modal-header">Factory Reset</div>
+        <div class="modal-header">🏭 Factory Reset</div>
         <div class="modal-body">
           <p><strong>Are you sure you want to reset all customizations?</strong></p>
           <p>This will:</p>
           <ul>
             <li>Remove all custom buttons</li>
-            <li>Reset interface to default</li>
+            <li>Reset theme to default</li>
+            <li>Clear custom CSS</li>
+            <li>Reset interface to factory settings</li>
           </ul>
           <p>Your files will <strong>not</strong> be affected.</p>
         </div>
