@@ -1,13 +1,34 @@
 {
-  "name": "discord-activity-coderunner-server",
-  "version": "1.0.0",
+  "name": "enhanced-coderunner-server",
+  "version": "2.0.0",
+  "description": "Enhanced CodeRunner server with advanced customization, theming, and security features",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
-    "build": "cd client && npm install && npm run build"
+    "build": "cd client && npm install && npm run build",
+    "clean": "rm -rf temp_files/* user_files/* backups/*",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "test": "node scripts/test.js",
+    "docker:build": "docker build -t enhanced-coderunner .",
+    "docker:run": "docker run -p 3000:3000 enhanced-coderunner"
   },
+  "keywords": [
+    "code",
+    "runner",
+    "compiler",
+    "interpreter",
+    "ide",
+    "editor",
+    "customization",
+    "themes",
+    "discord",
+    "activity"
+  ],
+  "author": "Enhanced CodeRunner Team",
+  "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
@@ -19,5 +40,13 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/enhanced-coderunner.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/enhanced-coderunner/issues"
+  },
+  "homepage": "https://github.com/your-username/enhanced-coderunner#readme"
 }
