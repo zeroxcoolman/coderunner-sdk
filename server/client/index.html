@@ -308,20 +308,6 @@
         padding: 15px;
         background: #fef2f2;
       }
-      .protected {
-        position: relative;
-        pointer-events: none;
-      }
-      .protected::after {
-        content: '🔒';
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        font-size: 12px;
-        background: rgba(255,255,255,0.9);
-        padding: 2px 4px;
-        border-radius: 50%;
-      }
 
       /* Drag and drop */
       .drop-zone {
@@ -414,7 +400,7 @@
             <option>ruby</option>
           </select>
           <input id="flags" placeholder="compiler flags (optional)" />
-          <button id="run" class="primary protected">Run ▶</button>
+          <button id="run" class="primary">Run ▶</button>
           <button class="settings-btn" id="settings-btn" title="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
@@ -427,8 +413,8 @@
         <aside class="sidebar">
           <div id="file-list"></div>
           <div class="files-actions" id="custom-file-actions">
-            <button id="new-file" class="protected">New File</button>
-            <button id="delete-file" class="protected">Delete File</button>
+            <button id="new-file">New File</button>
+            <button id="delete-file">Delete File</button>
             <div class="drop-zone" id="button-drop-zone">Drop custom buttons here</div>
           </div>
         </aside>
@@ -447,7 +433,7 @@
     <!-- Settings Panel -->
     <div id="settings-panel" class="settings-panel">
       <div class="settings-header">
-        <button id="back-to-editor" class="primary protected">← Back to Editor</button>
+        <button id="back-to-editor" class="primary">← Back to Editor</button>
         <h2>🎨 Advanced Customization Center</h2>
       </div>
 
@@ -595,7 +581,7 @@ button {
         <div class="danger-zone">
           <h3>⚠️ Danger Zone</h3>
           <p class="muted">Reset all customizations to default settings. Your files will not be affected.</p>
-          <button id="factory-reset" style="background-color: #dc2626; color: white; border-color: #dc2626;" class="protected">🏭 Factory Reset Customizations</button>
+          <button id="factory-reset" style="background-color: #dc2626; color: white; border-color: #dc2626;">🏭 Factory Reset Customizations</button>
         </div>
       </div>
     </div>
