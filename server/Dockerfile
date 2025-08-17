@@ -5,7 +5,13 @@ WORKDIR /build/client
 
 # Copy client package files
 COPY client/package*.json ./
-RUN npm ci --only=production
+
+# Use npm install instead of npm ci if no lock file exists
+RUN if [ -f package-lock.json ]; then \
+      npm ci --only=production; \
+    else \
+      npm install --only=production; \
+    fi
 
 # Copy client source code
 COPY client/ ./
@@ -20,7 +26,13 @@ WORKDIR /build/server
 
 # Copy server package files
 COPY package*.json ./
-RUN npm ci --only=production
+
+# Use npm install instead of npm ci if no lock file exists
+RUN if [ -f package-lock.json ]; then \
+      npm ci --only=production; \
+    else \
+      npm install --only=production; \
+    fi
 
 # Stage 3: Runtime environment with compilers and tools
 FROM node:18-alpine AS runtime
@@ -37,6 +49,7 @@ RUN apk add --no-cache \
     curl \
     git \
     make \
+    wget \
     && rm -rf /var/cache/apk/*
 
 # Install Rust
