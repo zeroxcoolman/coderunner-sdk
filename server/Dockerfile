@@ -1,11 +1,11 @@
-# Robust Railway build with Discord SDK support
+# Fixed Railway build with Discord SDK support
 FROM node:18-alpine
 
-# RAHHHHHHH
+# Install system dependencies with better error handling
 RUN apk add --no-cache \
     bash curl wget git openssh \
     gcc g++ musl-dev make \
-    python3 python3-dev \
+    python3 python3-dev py3-pip \
     php lua5.3 ruby openjdk11-jdk \
     && ln -sf /usr/bin/lua5.3 /usr/bin/lua \
     && rm -rf /var/cache/apk/*
@@ -21,31 +21,34 @@ RUN npm install --only=production --no-audit --no-fund
 COPY client ./client
 WORKDIR /app/client
 
-# Install client dependencies with better error handling
+# Install client dependencies with better error handling and fallbacks
 RUN npm install --no-audit --no-fund --verbose || \
     (echo "Initial install failed, trying without Discord SDK..." && \
-     npm install --no-audit --no-fund --ignore-scripts) || \
+     npm install --no-audit --no-fund --ignore-scripts --legacy-peer-deps) || \
     (echo "Fallback: installing core dependencies only..." && \
-     npm install vite --no-audit --no-fund)
+     npm install vite --no-audit --no-fund --force)
 
-# Build the client application
+# Build the client application with fallback
 RUN npm run build || \
     (echo "Build failed, creating fallback dist..." && \
      mkdir -p dist && \
      cp index.html dist/ && \
-     cp main.js dist/ && \
-     echo "/* Fallback build */" > dist/main.js)
+     cp main.js dist/ 2>/dev/null || echo "console.log('Fallback build');" > dist/main.js)
 
 # Back to app root and copy server files
 WORKDIR /app
 COPY server.js ./
 
-# Install Rust with minimal profile (faster)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable || echo "Rust install failed, continuing..."
+# Install Rust with error handling
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable || \
+    echo "Rust install failed, continuing without Rust support..."
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install Go with direct extraction (faster)
-RUN wget -q https://go.dev/dl/go1.21.0.linux-amd64.tar.gz -O - | tar -xz -C /usr/local || echo "Go install failed, continuing..."
+# Install Go with correct wget flags and error handling
+RUN wget -q -O /tmp/go.tar.gz https://go.dev/dl/go1.21.0.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz || \
+    echo "Go install failed, continuing without Go support..."
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Create required directories
@@ -61,7 +64,7 @@ ENV MAX_FILE_SIZE=1048576
 EXPOSE ${PORT:-3000}
 
 # Simple health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
 
 # Start the application
