@@ -1,4 +1,4 @@
-# Fast Railway build - optimized for speed and Railway's limits
+# I used railway so I optimised it more
 FROM node:18-alpine
 
 # Install all system dependencies in one efficient layer
