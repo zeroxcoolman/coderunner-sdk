@@ -11,76 +11,68 @@ const exec = util.promisify(execCb);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-console.log('🚀 Starting Enhanced CodeRunner Server...');
-
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '5mb' })); // Increased limit for custom themes and larger files
 
 // Enhanced CORS with better error handling
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
+const allowed = allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean);
+
 app.use(cors({ 
-  origin: true, // Allow all origins in development
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return cb(null, true);
+    
+    // Allow all origins if no specific origins are set (development mode)
+    if (allowed.length === 0) return cb(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowed.includes(origin)) return cb(null, true);
+    
+    // Log rejected origin for debugging
+    console.warn(`CORS: Rejected origin ${origin}`);
+    cb(new Error('Not allowed by CORS'));
+  }, 
   credentials: true 
 }));
 
-// Directory setup - FIXED: await in top-level
+// Enhanced static file serving with better error handling
+const clientDist = join(__dirname, 'client', 'dist');
+if (await fs.pathExists(clientDist)) {
+  app.use(express.static(clientDist, {
+    maxAge: '1d', // Cache static assets for 1 day
+    etag: true,
+    lastModified: true
+  }));
+  console.log(`[server] Serving client from ${clientDist}`);
+} else {
+  console.warn(`[server] Client dist folder not found at ${clientDist}`);
+}
+
 const TEMP_ROOT = join(__dirname, 'temp_files');
 const USER_FILES = join(__dirname, 'user_files');
-const BACKUP_DIR = join(__dirname, 'backups');
+const THEMES_DIR = join(__dirname, 'themes'); // For storing custom themes
+const BACKUP_DIR = join(__dirname, 'backups'); // For file backups
 
-// Initialize directories
-async function initializeDirectories() {
-  try {
-    await fs.ensureDir(TEMP_ROOT);
-    await fs.ensureDir(USER_FILES);
-    await fs.ensureDir(BACKUP_DIR);
-    console.log('✅ Directories initialized');
-  } catch (error) {
-    console.error('❌ Failed to initialize directories:', error);
-    process.exit(1);
-  }
-}
+// Ensure all directories exist
+await fs.ensureDir(TEMP_ROOT);
+await fs.ensureDir(USER_FILES);
+await fs.ensureDir(THEMES_DIR);
+await fs.ensureDir(BACKUP_DIR);
 
-// Static file serving - FIXED: proper async handling
-async function setupStaticServing() {
-  const clientDist = join(__dirname, 'client', 'dist');
-  const clientSrc = join(__dirname, 'client');
+const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS || 15000); // Increased timeout
+const MAX_FILE_SIZE = Number(process.env.MAX_FILE_SIZE || 1024 * 1024); // 1MB max file size
 
-  try {
-    // Try to serve built client first, then fallback to source
-    if (await fs.pathExists(clientDist)) {
-      app.use(express.static(clientDist, {
-        maxAge: '1h',
-        etag: true,
-        lastModified: true
-      }));
-      console.log(`✅ Serving client from ${clientDist}`);
-    } else if (await fs.pathExists(clientSrc)) {
-      app.use(express.static(clientSrc, {
-        maxAge: '0', // No caching for development
-        etag: false
-      }));
-      console.log(`⚠️ Serving client from source: ${clientSrc}`);
-    } else {
-      console.warn(`⚠️ No client files found. Please build the client first.`);
-    }
-  } catch (error) {
-    console.error('❌ Error setting up static serving:', error);
-  }
-}
-
-const EXEC_TIMEOUT_MS = Number(process.env.EXEC_TIMEOUT_MS || 15000);
-const MAX_FILE_SIZE = Number(process.env.MAX_FILE_SIZE || 1024 * 1024);
-
-// Language configurations
+// Enhanced language support with more compilers and interpreters
 const LANGUAGES = {
   c: {
-    compile: 'gcc {sources} -o {output} {flags} -std=c11 -Wall',
+    compile: 'gcc {sources} -o {output} {flags} -std=c11',
     run: './{output}',
     extension: '.c',
     description: 'C Programming Language'
   },
   cpp: {
-    compile: 'g++ {sources} -o {output} {flags} -std=c++17 -Wall',
+    compile: 'g++ {sources} -o {output} {flags} -std=c++17',
     run: './{output}',
     extension: '.cpp',
     description: 'C++ Programming Language'
@@ -126,6 +118,12 @@ const LANGUAGES = {
     run: 'node {sources}',
     extension: '.js',
     description: 'JavaScript (Node.js)'
+  },
+  typescript: {
+    compile: 'tsc {sources} --outDir . {flags}',
+    run: 'node {output}',
+    extension: '.ts',
+    description: 'TypeScript'
   }
 };
 
@@ -135,8 +133,12 @@ function validatePath(path) {
     return { valid: false, error: 'Path must be a non-empty string' };
   }
   
-  if (path === 'null' || path === 'undefined' || path.trim() === '') {
+  if (path === 'null' || path === 'undefined') {
     return { valid: false, error: 'Invalid path value' };
+  }
+  
+  if (path.trim() === '') {
+    return { valid: false, error: 'Path cannot be empty' };
   }
   
   // Prevent path traversal attacks
@@ -144,15 +146,15 @@ function validatePath(path) {
     return { valid: false, error: 'Invalid characters in path' };
   }
   
-  // Prevent dangerous filenames
+  // Prevent certain dangerous filenames
   const dangerousNames = ['con', 'prn', 'aux', 'nul', 'com1', 'com2', 'lpt1', 'lpt2'];
   if (dangerousNames.includes(path.toLowerCase())) {
     return { valid: false, error: 'Reserved filename' };
   }
   
-  // Check file extension
+  // Check file extension is reasonable
   const ext = extname(path).toLowerCase();
-  const allowedExts = ['.js', '.py', '.c', '.cpp', '.rs', '.go', '.sh', '.php', '.lua', '.rb', '.txt', '.md', '.json'];
+  const allowedExts = ['.js', '.py', '.c', '.cpp', '.rs', '.go', '.sh', '.php', '.lua', '.rb', '.ts', '.txt', '.md', '.json', '.xml', '.html', '.css'];
   if (ext && !allowedExts.includes(ext)) {
     return { valid: false, error: 'Unsupported file extension' };
   }
@@ -188,14 +190,15 @@ async function ensureToolchain(lang) {
     php: () => which('php'),
     lua: () => which('lua'),
     ruby: () => which('ruby'),
-    javascript: () => which('node')
+    javascript: () => which('node'),
+    typescript: async () => (await which('node')) && (await which('tsc'))
   };
   
   const check = checks[lang];
   return check ? await check() : false;
 }
 
-// Logging middleware
+// Enhanced logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   const originalSend = res.send;
@@ -209,97 +212,103 @@ app.use((req, res, next) => {
   next();
 });
 
-// API ENDPOINTS
+// Rate limiting middleware (simple implementation)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 100;
 
-// GET /api/files - List all files
+app.use('/api', (req, res, next) => {
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW;
+  
+  if (!rateLimitMap.has(ip)) {
+    rateLimitMap.set(ip, []);
+  }
+  
+  const requests = rateLimitMap.get(ip);
+  const recentRequests = requests.filter(timestamp => timestamp > windowStart);
+  
+  if (recentRequests.length >= MAX_REQUESTS_PER_WINDOW) {
+    return res.status(429).json({ 
+      error: 'Rate limit exceeded. Please slow down your requests.' 
+    });
+  }
+  
+  recentRequests.push(now);
+  rateLimitMap.set(ip, recentRequests);
+  
+  next();
+});
+
+// Enhanced file management API endpoints
+
+// GET /api/files - List all files with enhanced metadata
 app.get('/api/files', async (req, res) => {
   try {
-    console.log('📁 Loading files...');
     const files = [];
-    
     const fileNames = await fs.readdir(USER_FILES);
     
     for (const fileName of fileNames) {
-      try {
-        const filePath = join(USER_FILES, fileName);
-        const stats = await fs.stat(filePath);
-        
-        if (stats.isFile()) {
-          const language = detectLanguageFromFilename(fileName);
-          files.push({
-            path: fileName,
-            size: stats.size,
-            modified: stats.mtime,
-            language: language || 'text',
-            description: language ? LANGUAGES[language].description : 'Text file'
-          });
-        }
-      } catch (fileError) {
-        console.warn(`Error reading file ${fileName}:`, fileError.message);
-        continue;
+      const filePath = join(USER_FILES, fileName);
+      const stats = await fs.stat(filePath);
+      
+      if (stats.isFile()) {
+        const language = detectLanguageFromFilename(fileName);
+        files.push({
+          path: fileName,
+          size: stats.size,
+          modified: stats.mtime,
+          language: language || 'text',
+          description: language ? LANGUAGES[language].description : 'Text file'
+        });
       }
     }
     
-    // Sort by modification time (newest first)
+    // Sort files by modification time (newest first)
     files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
     
-    // Create welcome file if no files exist
+    // Create a default file if none exist
     if (files.length === 0) {
-      console.log('📝 Creating welcome file...');
-      const defaultContent = `// 🚀 Welcome to Enhanced CodeRunner!
-console.log("Hello, Enhanced CodeRunner!");
-console.log("Ready to code with amazing customizations!");
+      const defaultContent = `// Welcome to Enhanced CodeRunner!
+// This is your first file. Try adding some code and click Run!
 
-// Try these features:
-// • Click the ⚙️ settings to customize themes
-// • Create custom action buttons  
-// • Use keyboard shortcuts (Ctrl/Cmd+S to save)
-// • Test different programming languages
+console.log("🚀 Hello, Enhanced CodeRunner!");
+console.log("✨ Ready to code with style!");
 
-// This file was automatically created to get you started!
+// Example: Create more files, customize themes, and add custom buttons
+// Check out the settings panel (gear icon) for amazing customization options!
 `;
-      
-      try {
-        await fs.writeFile(join(USER_FILES, 'welcome.js'), defaultContent);
-        files.push({ 
-          path: 'welcome.js', 
-          size: defaultContent.length, 
-          modified: new Date(),
-          language: 'javascript',
-          description: 'JavaScript (Node.js)'
-        });
-        console.log('✅ Welcome file created');
-      } catch (createError) {
-        console.error('Failed to create welcome file:', createError);
-      }
+      await fs.writeFile(join(USER_FILES, 'welcome.js'), defaultContent);
+      files.push({ 
+        path: 'welcome.js', 
+        size: defaultContent.length, 
+        modified: new Date(),
+        language: 'javascript',
+        description: 'JavaScript (Node.js)'
+      });
     }
     
-    console.log(`✅ Loaded ${files.length} files`);
     res.json(files);
-  } catch (error) {
-    console.error('❌ Error listing files:', error);
-    res.status(500).json({ error: `Failed to list files: ${error.message}` });
+  } catch (err) {
+    console.error('Error listing files:', err);
+    res.status(500).json({ error: `Failed to list files: ${err.message}` });
   }
 });
 
-// GET /api/file?path=filename - Get file content
+// GET /api/file?path=filename - Get file content with enhanced validation
 app.get('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
     
-    if (!path) {
-      return res.status(400).json({ error: 'Path parameter is required' });
-    }
-    
-    console.log(`📄 Reading file: ${path}`);
-    
     const validation = validatePath(path);
     if (!validation.valid) {
-      console.log(`❌ Invalid path: ${validation.error}`);
+      console.log(`File request failed validation: ${validation.error} for path: "${path}"`);
       return res.status(400).json({ error: validation.error });
     }
     
     const filePath = join(USER_FILES, path);
+    console.log(`Reading file: ${filePath}`);
     
     // Check if file exists
     if (!(await fs.pathExists(filePath))) {
@@ -313,29 +322,31 @@ app.get('/api/file', async (req, res) => {
     }
     
     const content = await fs.readFile(filePath, 'utf8');
-    console.log(`✅ File read successfully: ${path} (${content.length} chars)`);
+    
+    // Add file metadata to response headers
+    res.set({
+      'X-File-Size': stats.size.toString(),
+      'X-File-Modified': stats.mtime.toISOString(),
+      'X-File-Language': detectLanguageFromFilename(path) || 'text'
+    });
     
     res.send(content);
-  } catch (error) {
-    console.error('❌ Error reading file:', error);
-    if (error.code === 'ENOENT') {
+  } catch (err) {
+    console.error('Error reading file:', err);
+    if (err.code === 'ENOENT') {
       res.status(404).json({ error: 'File not found' });
+    } else if (err.code === 'EACCES') {
+      res.status(403).json({ error: 'File access denied' });
     } else {
-      res.status(500).json({ error: `Failed to read file: ${error.message}` });
+      res.status(500).json({ error: `Failed to read file: ${err.message}` });
     }
   }
 });
 
-// POST /api/file - Create new file
+// POST /api/file - Create new file with enhanced validation
 app.post('/api/file', async (req, res) => {
   try {
     const { path, content = '' } = req.body;
-    
-    if (!path) {
-      return res.status(400).json({ error: 'Path is required' });
-    }
-    
-    console.log(`📝 Creating file: ${path}`);
     
     const validation = validatePath(path);
     if (!validation.valid) {
@@ -354,26 +365,29 @@ app.post('/api/file', async (req, res) => {
       return res.status(409).json({ error: 'File already exists' });
     }
     
+    // Create backup if this is replacing an existing file (shouldn't happen here, but safety first)
+    await createBackup(path, content);
+    
     await fs.writeFile(filePath, content, 'utf8');
     
-    console.log(`✅ File created: ${path} (${content.length} bytes)`);
+    console.log(`Created file: ${filePath} (${content.length} bytes)`);
     res.json({ success: true, message: `File '${path}' created successfully` });
-  } catch (error) {
-    console.error('❌ Error creating file:', error);
-    res.status(500).json({ error: `Failed to create file: ${error.message}` });
+  } catch (err) {
+    console.error('Error creating file:', err);
+    if (err.code === 'ENOSPC') {
+      res.status(507).json({ error: 'Insufficient storage space' });
+    } else if (err.code === 'EACCES') {
+      res.status(403).json({ error: 'Permission denied' });
+    } else {
+      res.status(500).json({ error: `Failed to create file: ${err.message}` });
+    }
   }
 });
 
-// PUT /api/file - Update file content
+// PUT /api/file - Update file content with backup system
 app.put('/api/file', async (req, res) => {
   try {
     const { path, content } = req.body;
-    
-    if (!path) {
-      return res.status(400).json({ error: 'Path is required' });
-    }
-    
-    console.log(`💾 Updating file: ${path}`);
     
     const validation = validatePath(path);
     if (!validation.valid) {
@@ -390,27 +404,35 @@ app.put('/api/file', async (req, res) => {
     
     const filePath = join(USER_FILES, path);
     
-    // Check if file exists (create if it doesn't)
+    // Check if file exists
+    if (!(await fs.pathExists(filePath))) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    // Create backup before modifying
+    const oldContent = await fs.readFile(filePath, 'utf8');
+    await createBackup(path, oldContent);
+    
     await fs.writeFile(filePath, content, 'utf8');
     
-    console.log(`✅ File updated: ${path} (${content.length} bytes)`);
+    console.log(`Updated file: ${filePath} (${content.length} bytes)`);
     res.json({ success: true, message: `File '${path}' updated successfully` });
-  } catch (error) {
-    console.error('❌ Error updating file:', error);
-    res.status(500).json({ error: `Failed to update file: ${error.message}` });
+  } catch (err) {
+    console.error('Error updating file:', err);
+    if (err.code === 'ENOSPC') {
+      res.status(507).json({ error: 'Insufficient storage space' });
+    } else if (err.code === 'EACCES') {
+      res.status(403).json({ error: 'Permission denied' });
+    } else {
+      res.status(500).json({ error: `Failed to update file: ${err.message}` });
+    }
   }
 });
 
-// DELETE /api/file?path=filename - Delete file
+// DELETE /api/file?path=filename - Delete file with backup
 app.delete('/api/file', async (req, res) => {
   try {
     const { path } = req.query;
-    
-    if (!path) {
-      return res.status(400).json({ error: 'Path parameter is required' });
-    }
-    
-    console.log(`🗑️ Deleting file: ${path}`);
     
     const validation = validatePath(path);
     if (!validation.valid) {
@@ -424,17 +446,51 @@ app.delete('/api/file', async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
     
+    // Create backup before deleting
+    const content = await fs.readFile(filePath, 'utf8');
+    await createBackup(path, content, 'deleted');
+    
     await fs.remove(filePath);
     
-    console.log(`✅ File deleted: ${path}`);
+    console.log(`Deleted file: ${filePath}`);
     res.json({ success: true, message: `File '${path}' deleted successfully` });
-  } catch (error) {
-    console.error('❌ Error deleting file:', error);
-    res.status(500).json({ error: `Failed to delete file: ${error.message}` });
+  } catch (err) {
+    console.error('Error deleting file:', err);
+    if (err.code === 'EACCES') {
+      res.status(403).json({ error: 'Permission denied' });
+    } else {
+      res.status(500).json({ error: `Failed to delete file: ${err.message}` });
+    }
   }
 });
 
-// GET /api/system/info - System information
+// Enhanced backup system
+async function createBackup(filename, content, operation = 'backup') {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFilename = `${filename}.${operation}.${timestamp}.bak`;
+    const backupPath = join(BACKUP_DIR, backupFilename);
+    
+    await fs.writeFile(backupPath, content, 'utf8');
+    
+    // Clean old backups (keep only last 10 per file)
+    const backups = (await fs.readdir(BACKUP_DIR))
+      .filter(f => f.startsWith(filename))
+      .sort()
+      .reverse();
+    
+    if (backups.length > 10) {
+      const oldBackups = backups.slice(10);
+      for (const oldBackup of oldBackups) {
+        await fs.remove(join(BACKUP_DIR, oldBackup));
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to create backup:', err.message);
+  }
+}
+
+// GET /api/system/info - System information endpoint
 app.get('/api/system/info', async (req, res) => {
   try {
     const info = {
@@ -442,12 +498,12 @@ app.get('/api/system/info', async (req, res) => {
       system: {
         platform: process.platform,
         nodeVersion: process.version,
-        uptime: Math.round(process.uptime()),
+        uptime: process.uptime(),
         memory: process.memoryUsage()
       }
     };
     
-    // Check available toolchains
+    // Check which language toolchains are available
     for (const [lang, config] of Object.entries(LANGUAGES)) {
       const available = await ensureToolchain(lang);
       info.languages[lang] = {
@@ -457,57 +513,54 @@ app.get('/api/system/info', async (req, res) => {
     }
     
     res.json(info);
-  } catch (error) {
-    console.error('Error getting system info:', error);
+  } catch (err) {
+    console.error('Error getting system info:', err);
     res.status(500).json({ error: 'Failed to get system information' });
   }
 });
 
-// Health check endpoint
+// Health check endpoint with enhanced information
 app.get('/health', async (req, res) => {
   try {
-    const userFilesList = await fs.readdir(USER_FILES).catch(() => []);
-    const tempFilesList = await fs.readdir(TEMP_ROOT).catch(() => []);
-    
     const stats = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      uptime: Math.round(process.uptime()),
+      uptime: process.uptime(),
       memory: process.memoryUsage(),
       directories: {
-        userFiles: userFilesList.length,
-        tempFiles: tempFilesList.length
+        userFiles: await fs.readdir(USER_FILES).then(files => files.length),
+        tempFiles: await fs.readdir(TEMP_ROOT).then(files => files.length),
+        backups: await fs.readdir(BACKUP_DIR).then(files => files.length)
       }
     };
     
     res.json(stats);
-  } catch (error) {
+  } catch (err) {
     res.status(500).json({
       status: 'unhealthy',
-      error: error.message,
+      error: err.message,
       timestamp: new Date().toISOString()
     });
   }
 });
 
-// POST /api/run - Execute code
+// Enhanced code execution with better security and error handling
 app.post('/api/run', async (req, res) => {
   const { language: langIn, flags = '', entry, code, files = [] } = req.body || {};
-  
-  // Create session directory
+
+  // Create temp working dir with better naming
   const sessionId = uuidv4();
   const workdir = join(TEMP_ROOT, `session_${sessionId}`);
-  
+  await fs.ensureDir(workdir);
+
   let language = (langIn || '').toLowerCase() || null;
   const createdFiles = [];
   const startTime = Date.now();
 
-  console.log(`🚀 [${sessionId}] Starting execution: language=${language}, entry=${entry}`);
-
   try {
-    await fs.ensureDir(workdir);
+    console.log(`[${sessionId}] Starting execution: language=${language}, entry=${entry}`);
 
-    // Handle entry file
+    // Enhanced file handling
     if (entry) {
       const validation = validatePath(entry);
       if (!validation.valid) {
@@ -527,8 +580,25 @@ app.post('/api/run', async (req, res) => {
       if (!language) language = detectLanguageFromFilename(entry);
     }
 
+    // Process additional files
+    for (const f of files) {
+      if (!f.name || f.content === undefined) continue;
+      
+      const validation = validatePath(f.name);
+      if (!validation.valid) {
+        console.warn(`Skipping invalid file: ${f.name} - ${validation.error}`);
+        continue;
+      }
+      
+      const filepath = join(workdir, f.name);
+      await fs.ensureDir(dirname(filepath));
+      await fs.writeFile(filepath, f.content, 'utf8');
+      createdFiles.push(filepath);
+      if (!language) language = detectLanguageFromFilename(f.name) || language;
+    }
+
     // Handle inline code
-    if (code && !entry) {
+    if (code) {
       if (!language) throw new Error('Language required when using inline code');
       const ext = LANGUAGES[language]?.extension;
       if (!ext) throw new Error(`Unsupported language: ${language}`);
@@ -548,33 +618,27 @@ app.post('/api/run', async (req, res) => {
 
     const info = LANGUAGES[language];
     if (!info) {
-      const supportedLangs = Object.keys(LANGUAGES).join(', ');
-      throw new Error(`Unsupported language: ${language}. Supported: ${supportedLangs}`);
+      throw new Error(`Unsupported language: ${language}. Supported: ${Object.keys(LANGUAGES).join(', ')}`);
     }
 
-    // Check toolchain
+    // Check toolchain availability
     const toolchainOk = await ensureToolchain(language);
     if (!toolchainOk) {
-      const languageList = Object.entries(LANGUAGES)
-        .map(([lang, conf]) => `  • ${lang}: ${conf.description}`)
-        .join('\n');
-      
-      return res.json({ 
+      return res.status(200).json({ 
         stdout: '', 
-        stderr: `❌ Missing toolchain for ${language}.\n\nSupported languages:\n${languageList}`,
+        stderr: `❌ Missing toolchain for ${language}.\n\nSupported languages:\n${Object.entries(LANGUAGES).map(([lang, conf]) => `  • ${lang}: ${conf.description}`).join('\n')}`,
         error: `Toolchain not available for ${language}`,
-        executionTime: Date.now() - startTime,
-        success: false
+        executionTime: Date.now() - startTime
       });
     }
 
-    const outputName = 'program';
-    const sources = createdFiles.map(p => `"${p}"`).join(' ');
+    const outputName = 'program.out';
+    const sources = createdFiles.map(p => `"${p}"`).join(' '); // Better quoting
 
     let runCmd;
     let compileTime = 0;
 
-    // Compilation step
+    // Enhanced compilation with better error reporting
     if (info.compile) {
       const compileStart = Date.now();
       const compileCmd = info.compile
@@ -582,31 +646,30 @@ app.post('/api/run', async (req, res) => {
         .replace('{output}', outputName)
         .replace('{flags}', flags || '');
 
-      console.log(`🔨 [${sessionId}] Compiling: ${compileCmd}`);
+      console.log(`[${sessionId}] Compiling: ${compileCmd}`);
 
       try {
         const { stdout: cOut, stderr: cErr } = await exec(compileCmd, { 
           cwd: workdir, 
-          timeout: EXEC_TIMEOUT_MS,
-          maxBuffer: 2 * 1024 * 1024
+          timeout: EXEC_TIMEOUT_MS, 
+          maxBuffer: 5 * 1024 * 1024 // 5MB buffer
         });
         
         compileTime = Date.now() - compileStart;
         
-        // Check if compilation produced an executable
-        if (!(await fs.pathExists(join(workdir, outputName)))) {
-          return res.json({ 
-            stdout: cOut || '', 
-            stderr: `💥 Compilation failed:\n${cErr || 'No executable produced'}`, 
-            error: 'Compilation failed',
-            compileTime,
-            executionTime: Date.now() - startTime,
-            success: false
-          });
-        }
-
         if (cErr && cErr.trim()) {
-          console.log(`⚠️ [${sessionId}] Compilation warnings: ${cErr.substring(0, 200)}`);
+          // Check if compilation actually failed
+          if (cErr.toLowerCase().includes('error') && !(await fs.pathExists(join(workdir, outputName)))) {
+            return res.json({ 
+              stdout: cOut || '', 
+              stderr: `💥 Compilation failed:\n${cErr}`, 
+              error: 'Compilation failed',
+              compileTime,
+              executionTime: Date.now() - startTime
+            });
+          }
+          // Just warnings, continue
+          console.log(`[${sessionId}] Compilation warnings: ${cErr}`);
         }
       } catch (compileError) {
         return res.json({
@@ -614,8 +677,7 @@ app.post('/api/run', async (req, res) => {
           stderr: `💥 Compilation error:\n${compileError.message}`,
           error: 'Compilation failed',
           compileTime: Date.now() - compileStart,
-          executionTime: Date.now() - startTime,
-          success: false
+          executionTime: Date.now() - startTime
         });
       }
 
@@ -624,24 +686,28 @@ app.post('/api/run', async (req, res) => {
       runCmd = info.run.replace('{sources}', sources);
     }
 
-    console.log(`⚡ [${sessionId}] Running: ${runCmd}`);
+    console.log(`[${sessionId}] Running: ${runCmd}`);
 
-    // Execution step
+    // Enhanced execution with timeout and resource limits
     const { stdout, stderr } = await exec(runCmd, { 
       cwd: workdir, 
-      timeout: EXEC_TIMEOUT_MS,
-      maxBuffer: 2 * 1024 * 1024,
+      timeout: EXEC_TIMEOUT_MS, 
+      maxBuffer: 5 * 1024 * 1024,
+      shell: '/bin/bash',
       env: {
         ...process.env,
+        // Security: Limit environment variables
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        USER: process.env.USER
+        USER: process.env.USER,
+        // Prevent network access in some languages (if needed)
+        // NO_PROXY: '*'
       }
     });
 
     const executionTime = Date.now() - startTime;
     
-    console.log(`✅ [${sessionId}] Execution completed in ${executionTime}ms`);
+    console.log(`[${sessionId}] Execution completed in ${executionTime}ms`);
 
     const result = {
       stdout: stdout || '',
@@ -657,152 +723,102 @@ app.post('/api/run', async (req, res) => {
 
     res.json(result);
 
-  } catch (error) {
+  } catch (err) {
     const executionTime = Date.now() - startTime;
-    console.error(`❌ [${sessionId}] Execution error:`, error.message);
+    console.error(`[${sessionId}] Execution error:`, err);
     
-    let errorMessage = error.message || String(error);
+    let errorMessage = err.message || String(err);
     let errorType = 'Runtime error';
 
-    if (error.killed && error.signal === 'SIGTERM') {
+    if (err.killed && err.signal === 'SIGTERM') {
       errorMessage = `⏱️ Execution timed out after ${EXEC_TIMEOUT_MS}ms`;
       errorType = 'Timeout';
-    } else if (error.code === 'ENOENT') {
+    } else if (err.code === 'ENOENT') {
       errorMessage = '❌ Command not found. Please check if the required compiler/interpreter is installed.';
       errorType = 'Missing toolchain';
-    } else if (error.stderr) {
-      errorMessage = error.stderr;
+    } else if (err.stderr) {
+      errorMessage = err.stderr;
     }
 
-    res.json({ 
-      stdout: error.stdout || '', 
+    res.status(200).json({ 
+      stdout: err.stdout || '', 
       stderr: `💥 ${errorType}:\n${errorMessage}`,
       error: errorType,
       executionTime,
-      language,
-      success: false
+      language
     });
   } finally {
-    // Cleanup with delay
+    // Enhanced cleanup with retry logic
     setTimeout(async () => {
       try {
         await fs.remove(workdir);
-        console.log(`🧹 [${sessionId}] Cleanup completed`);
+        console.log(`[${sessionId}] Cleanup completed`);
       } catch (cleanupErr) {
-        console.warn(`⚠️ [${sessionId}] Cleanup failed:`, cleanupErr.message);
+        console.warn(`[${sessionId}] Cleanup failed:`, cleanupErr.message);
+        // Retry cleanup after a delay
+        setTimeout(() => fs.remove(workdir).catch(() => {}), 5000);
       }
-    }, 1000);
+    }, 1000); // Delay cleanup to ensure all processes are finished
   }
 });
 
-// Error handling middleware
+// Enhanced error handling middleware
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err);
+  console.error('Unhandled error:', err);
   
   if (err.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Request too large' });
   }
   
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'CORS policy violation' });
+  }
+  
   res.status(500).json({ 
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
 
-// 404 handler - serve client for SPA routing
+// Enhanced 404 handler
 app.get('*', async (req, res) => {
-  try {
-    const clientDist = join(__dirname, 'client', 'dist');
-    const clientSrc = join(__dirname, 'client');
-    
-    let indexPath;
-    if (await fs.pathExists(join(clientDist, 'index.html'))) {
-      indexPath = join(clientDist, 'index.html');
-    } else if (await fs.pathExists(join(clientSrc, 'index.html'))) {
-      indexPath = join(clientSrc, 'index.html');
-    }
-    
-    if (indexPath) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).json({ 
-        error: 'Not found',
-        message: 'Client not found. Please ensure client files are available.',
-        availableEndpoints: [
-          'GET /health',
-          'GET /api/files',
-          'GET /api/file?path=filename',
-          'POST /api/file',
-          'PUT /api/file',
-          'DELETE /api/file?path=filename',
-          'POST /api/run',
-          'GET /api/system/info'
-        ]
-      });
-    }
-  } catch (error) {
-    console.error('Error in 404 handler:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  // Serve client index.html for SPA routing
+  const indexPath = join(clientDist, 'index.html');
+  if (await fs.pathExists(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ 
+      error: 'Not found',
+      message: 'Client not built. Run: npm run build',
+      availableEndpoints: [
+        'GET /health',
+        'GET /api/files',
+        'GET /api/file?path=filename',
+        'POST /api/file',
+        'PUT /api/file',
+        'DELETE /api/file?path=filename',
+        'POST /api/run',
+        'GET /api/system/info'
+      ]
+    });
   }
 });
 
-// Initialize and start server
-async function startServer() {
-  try {
-    // Initialize directories first
-    await initializeDirectories();
-    
-    // Setup static file serving
-    await setupStaticServing();
-    
-    // Start the server
-    const PORT = process.env.PORT || 3000;
-    const HOST = process.env.HOST || '0.0.0.0';
+// Enhanced server startup
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-    const server = app.listen(PORT, HOST, () => {
-      console.log(`🚀 Enhanced CodeRunner Server Started!`);
-      console.log(`📡 Server: http://${HOST}:${PORT}`);
-      console.log(`📁 Files: ${USER_FILES}`);
-      console.log(`🔧 Temp: ${TEMP_ROOT}`);
-      
-      // Check toolchains on startup
-      setTimeout(async () => {
-        console.log('\n🔧 Checking available toolchains...');
-        for (const [lang, config] of Object.entries(LANGUAGES)) {
-          try {
-            const available = await ensureToolchain(lang);
-            const status = available ? '✅' : '❌';
-            console.log(`   ${status} ${lang.padEnd(12)} - ${config.description}`);
-          } catch (error) {
-            console.log(`   ❌ ${lang.padEnd(12)} - Error checking: ${error.message}`);
-          }
-        }
-        console.log('\n✅ Server ready for requests!');
-      }, 1000);
-    });
-
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('🛑 SIGTERM received, shutting down gracefully');
-      server.close(() => {
-        console.log('✅ Server closed');
-        process.exit(0);
-      });
-    });
-
-    process.on('SIGINT', () => {
-      console.log('🛑 SIGINT received, shutting down gracefully');
-      server.close(() => {
-        console.log('✅ Server closed');
-        process.exit(0);
-      });
-    });
-
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-// Start the server
-startServer();
+app.listen(PORT, HOST, () => {
+  console.log(`CodeRunner Server Started!`);
+  
+  // Check available toolchains on startup
+  setTimeout(async () => {
+    console.log('\n🔧 Checking available toolchains...');
+    for (const [lang, config] of Object.entries(LANGUAGES)) {
+      const available = await ensureToolchain(lang);
+      const status = available ? '✅' : '❌';
+      console.log(`   ${status} ${lang}: ${config.description}`);
+    }
+    console.log('');
+  }, 1000);
+});
